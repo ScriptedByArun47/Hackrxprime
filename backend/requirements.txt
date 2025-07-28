@@ -9,3 +9,4 @@ ollama                            # Local model interface
 requests                          # For downloading files
 beautifulsoup4                    # For parsing HTML emails
 python-docx                       # For extracting DOCX files
+google-generativeai==0.5.4
