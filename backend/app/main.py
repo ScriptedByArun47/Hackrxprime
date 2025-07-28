@@ -13,12 +13,18 @@ import asyncio
 import re
 import google.generativeai as genai
 from transformers import AutoTokenizer
+from dotenv import load_dotenv
+import os
+
 
 # 🔧 Setup
+load_dotenv() 
+api_key = os.getenv("GEMINI_API")
 app = FastAPI()
 model = SentenceTransformer("all-MiniLM-L6-v2")
+
 tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
-genai.configure(api_key="AIzaSyAxtoi-r_gHKppRIo9tNhoOUS9akbf8qhg")
+genai.configure(api_key=api_key)
 genai_model = genai.GenerativeModel('models/gemini-1.5-flash')
 
 app.add_middleware(
