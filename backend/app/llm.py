@@ -2,8 +2,13 @@ import json
 import os
 import google.generativeai as genai
 from prompts import MISTRAL_SYSTEM_PROMPT_TEMPLATE, build_mistral_prompt, build_batch_prompt
+import os
+from dotenv import load_dotenv
 
-genai.configure(api_key="AIzaSyAxtoi-r_gHKppRIo9tNhoOUS9akbf8qhg")
+
+api_key = os.getenv("GEMINI_API")
+
+genai.configure(api_key=api_key)
 genai_model = genai.GenerativeModel('models/gemini-1.5-flash')
 
 # Escape dangerous characters to avoid JSON issues
