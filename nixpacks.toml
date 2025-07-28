@@ -1,0 +1,13 @@
+[phases.setup]
+nixpkgsArchive = "https://github.com/NixOS/nixpkgs/archive/refs/tags/23.11.tar.gz"
+
+[phases.install]
+cmds = [
+  "pip install -r backend/requirements.txt"
+]
+
+[phases.build]
+cmds = []
+
+[phases.start]
+cmd = "uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT"
