@@ -1,41 +1,46 @@
-import json
 import os
-import faiss
 import numpy as np
+import faiss
+from pymongo import MongoClient
 from sentence_transformers import SentenceTransformer
+from app.extract_clauses import extract_clauses_from_url
 
-# Load model
+# Load embedding model
+EMBEDDING_DIM = 384
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
-# Load clauses
-CLAUSE_PATH = "app/data/clauses.json"
-INDEX_DIR = "app/data/faiss_index"
-INDEX_PATH = os.path.join(INDEX_DIR, "index.faiss")
-TEXTS_PATH = os.path.join(INDEX_DIR, "texts.json")
+# MongoDB setup
+MONGO_URI = "mongodb+srv://kevin:Year2006@cluster0.c40cp0n.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"  # ✅ Hardcoded (no env)
+client = MongoClient(MONGO_URI)
+db = client["hackrx"]
+collection = db["policy_clauses"]
 
-if not os.path.exists(CLAUSE_PATH):
-    raise FileNotFoundError(f"❌ Clause file not found: {CLAUSE_PATH}")
+# FAISS index
+index = faiss.IndexFlatL2(EMBEDDING_DIM)
 
-with open(CLAUSE_PATH, "r", encoding="utf-8") as f:
-    clauses = json.load(f)
+def embed_clauses(clauses):
+    texts = [clause['clause'] for clause in clauses]
+    embeddings = model.encode(texts, normalize_embeddings=True)
+    return embeddings
 
-if not clauses:
-    raise ValueError("❌ No clauses found in the JSON file.")
+def preload(url):
+    clauses = extract_clauses_from_url(url)
+    embeddings = embed_clauses(clauses)
 
-texts = [c['text'] for c in clauses]
-embeddings = model.encode(texts, convert_to_numpy=True)
+    index.add(np.array(embeddings).astype("float32"))
 
-# Build FAISS index
-index = faiss.IndexFlatL2(embeddings.shape[1])
-index.add(embeddings.astype("float32"))
+    for i, clause in enumerate(clauses):
+        collection.insert_one({
+            "faiss_id": index.ntotal - len(clauses) + i,
+            "clause": clause['clause']
+        })
 
-# Save index and corresponding clause texts
-os.makedirs(INDEX_DIR, exist_ok=True)
-faiss.write_index(index, INDEX_PATH)
+    # ✅ Save FAISS index
+    faiss.write_index(index, "app/data/faiss.index")
 
-# Optional: save texts separately for retrieval
-with open(TEXTS_PATH, "w", encoding="utf-8") as f:
-    json.dump(texts, f, indent=2)
+    print(f"✅ Loaded {len(clauses)} clauses into FAISS and MongoDB.")
 
-print("✅ FAISS index built and saved to:", INDEX_PATH)
-print("📄 Clause texts saved to:", TEXTS_PATH)
+# Example
+if __name__ == "__main__":
+    TEST_URL = "https://example.com/your-policy.pdf"
+    preload(TEST_URL)

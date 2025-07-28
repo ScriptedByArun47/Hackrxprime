@@ -1,0 +1,94 @@
+2025-07-26 22:42:13,799 [INFO] Use pytorch device_name: cpu
+2025-07-26 22:42:13,800 [INFO] Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-07-26 22:42:41,824 [INFO] Total clauses extracted: 291
+2025-07-26 22:42:47,986 [INFO] Prompting LLM for Q: What is the grace period for premium payment under the National Parivar Mediclaim Plus Policy?
+2025-07-26 22:42:49,098 [INFO] HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 404 Not Found"
+2025-07-26 22:42:49,120 [INFO] Prompting LLM for Q: What is the waiting period for pre-existing diseases (PED) to be covered?
+2025-07-26 22:42:49,135 [INFO] HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 404 Not Found"
+2025-07-26 22:42:49,160 [INFO] Prompting LLM for Q: Does this policy cover maternity expenses, and what are the conditions?
+2025-07-26 22:42:49,171 [INFO] HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 404 Not Found"
+2025-07-26 22:42:49,191 [INFO] Prompting LLM for Q: What is the waiting period for cataract surgery?
+2025-07-26 22:42:49,199 [INFO] HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 404 Not Found"
+2025-07-26 22:42:49,221 [INFO] Prompting LLM for Q: Are the medical expenses for an organ donor covered under this policy?
+2025-07-26 22:42:49,230 [INFO] HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 404 Not Found"
+2025-07-26 22:42:49,252 [INFO] Prompting LLM for Q: What is the No Claim Discount (NCD) offered in this policy?
+2025-07-26 22:42:49,263 [INFO] HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 404 Not Found"
+2025-07-26 22:42:49,299 [INFO] Prompting LLM for Q: Is there a benefit for preventive health check-ups?
+2025-07-26 22:42:49,306 [INFO] HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 404 Not Found"
+2025-07-26 22:42:49,326 [INFO] Prompting LLM for Q: How does the policy define a 'Hospital'?
+2025-07-26 22:42:49,333 [INFO] HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 404 Not Found"
+2025-07-26 22:42:49,356 [INFO] Prompting LLM for Q: What is the extent of coverage for AYUSH treatments?
+2025-07-26 22:42:49,364 [INFO] HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 404 Not Found"
+2025-07-26 22:42:49,386 [INFO] Prompting LLM for Q: Are there any sub-limits on room rent and ICU charges for Plan A?
+2025-07-26 22:42:49,388 [ERROR] LLM Error: model "llama3:8b-q4_K_M" not found, try pulling it first (status code: 404)
+2025-07-26 22:42:49,389 [ERROR] LLM Error: model "llama3:8b-q4_K_M" not found, try pulling it first (status code: 404)
+2025-07-26 22:42:49,389 [ERROR] LLM Error: model "llama3:8b-q4_K_M" not found, try pulling it first (status code: 404)
+2025-07-26 22:42:49,389 [ERROR] LLM Error: model "llama3:8b-q4_K_M" not found, try pulling it first (status code: 404)
+2025-07-26 22:42:49,390 [ERROR] LLM Error: model "llama3:8b-q4_K_M" not found, try pulling it first (status code: 404)
+2025-07-26 22:42:49,390 [ERROR] LLM Error: model "llama3:8b-q4_K_M" not found, try pulling it first (status code: 404)
+2025-07-26 22:42:49,390 [ERROR] LLM Error: model "llama3:8b-q4_K_M" not found, try pulling it first (status code: 404)
+2025-07-26 22:42:49,391 [ERROR] LLM Error: model "llama3:8b-q4_K_M" not found, try pulling it first (status code: 404)
+2025-07-26 22:42:49,391 [ERROR] LLM Error: model "llama3:8b-q4_K_M" not found, try pulling it first (status code: 404)
+2025-07-26 22:42:49,392 [INFO] HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 404 Not Found"
+2025-07-26 22:42:49,394 [ERROR] LLM Error: model "llama3:8b-q4_K_M" not found, try pulling it first (status code: 404)
+2025-07-26 22:44:28,341 [INFO] Use pytorch device_name: cpu
+2025-07-26 22:44:28,342 [INFO] Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-07-26 22:44:51,988 [INFO] Use pytorch device_name: cpu
+2025-07-26 22:44:51,988 [INFO] Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-07-26 22:45:00,949 [INFO] Total clauses extracted: 291
+2025-07-26 22:45:07,396 [INFO] Prompting LLM for Q: What is the grace period for premium payment under the National Parivar Mediclaim Plus Policy?
+2025-07-26 22:45:08,757 [INFO] Prompting LLM for Q: What is the waiting period for pre-existing diseases (PED) to be covered?
+2025-07-26 22:45:08,808 [INFO] Prompting LLM for Q: Does this policy cover maternity expenses, and what are the conditions?
+2025-07-26 22:45:08,871 [INFO] Prompting LLM for Q: What is the waiting period for cataract surgery?
+2025-07-26 22:45:08,926 [INFO] Prompting LLM for Q: Are the medical expenses for an organ donor covered under this policy?
+2025-07-26 22:45:08,974 [INFO] Prompting LLM for Q: What is the No Claim Discount (NCD) offered in this policy?
+2025-07-26 22:45:09,023 [INFO] Prompting LLM for Q: Is there a benefit for preventive health check-ups?
+2025-07-26 22:45:09,093 [INFO] Prompting LLM for Q: How does the policy define a 'Hospital'?
+2025-07-26 22:45:09,144 [INFO] Prompting LLM for Q: What is the extent of coverage for AYUSH treatments?
+2025-07-26 22:45:09,202 [INFO] Prompting LLM for Q: Are there any sub-limits on room rent and ICU charges for Plan A?
+2025-07-26 22:45:15,469 [INFO] HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2025-07-26 22:45:20,540 [INFO] HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2025-07-26 22:45:28,724 [INFO] HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2025-07-26 22:45:34,299 [INFO] HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2025-07-26 22:45:43,428 [INFO] HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2025-07-26 22:45:48,095 [INFO] HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2025-07-26 22:45:56,025 [INFO] HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2025-07-26 22:46:08,201 [INFO] HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2025-07-26 22:46:22,690 [INFO] HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2025-07-26 22:46:28,256 [INFO] HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2025-07-26 22:53:56,338 [INFO] Use pytorch device_name: cpu
+2025-07-26 22:53:56,339 [INFO] Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-07-26 22:54:07,187 [INFO] Total clauses extracted: 291
+2025-07-26 22:54:14,623 [INFO] Prompting LLM with batched questions...
+2025-07-26 22:54:38,940 [INFO] HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2025-07-26 22:56:00,595 [INFO] Use pytorch device_name: cpu
+2025-07-26 22:56:00,596 [INFO] Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-07-26 22:56:29,093 [INFO] Use pytorch device_name: cpu
+2025-07-26 22:56:29,094 [INFO] Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-07-26 22:56:41,516 [INFO] Total clauses extracted: 291
+2025-07-26 22:56:48,032 [INFO] Prompting LLM with batched questions...
+2025-07-26 22:56:56,015 [INFO] HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2025-07-26 22:58:57,722 [INFO] Use pytorch device_name: cpu
+2025-07-26 22:58:57,723 [INFO] Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-07-26 23:03:47,325 [INFO] Use pytorch device_name: cpu
+2025-07-26 23:03:47,326 [INFO] Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-07-26 23:04:13,988 [INFO] Use pytorch device_name: cpu
+2025-07-26 23:04:13,989 [INFO] Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-07-26 23:07:45,253 [INFO] Total clauses extracted: 291
+2025-07-26 23:09:25,957 [INFO] Use pytorch device_name: cpu
+2025-07-26 23:09:25,958 [INFO] Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-07-26 23:09:39,539 [INFO] Total clauses extracted: 291
+2025-07-26 23:09:46,292 [INFO] Prompting LLM with batched questions...
+2025-07-26 23:11:31,347 [INFO] HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2025-07-26 23:17:42,144 [INFO] Use pytorch device_name: cpu
+2025-07-26 23:17:42,145 [INFO] Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-07-26 23:36:53,764 [INFO] Use pytorch device_name: cpu
+2025-07-26 23:36:53,765 [INFO] Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-07-26 23:39:35,192 [INFO] Use pytorch device_name: cpu
+2025-07-26 23:39:35,193 [INFO] Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-07-26 23:40:04,874 [INFO] Use pytorch device_name: cpu
+2025-07-26 23:40:04,874 [INFO] Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-07-26 23:40:17,254 [INFO] Total clauses extracted: 291
+2025-07-26 23:40:25,019 [INFO] Prompting LLM with batched questions...
+2025-07-26 23:40:26,982 [INFO] error_code=429 error_message='Rate limit exceeded: free-models-per-day. Add 10 credits to unlock 1000 free model requests per day' error_param=None error_type=None message='OpenAI API error received' stream_error=False
+2025-07-26 23:40:26,983 [ERROR] OpenRouter LLM Error: Rate limit exceeded: free-models-per-day. Add 10 credits to unlock 1000 free model requests per day

@@ -13,17 +13,27 @@ class ClauseRetriever:
         self.index, self.embeddings = self.build_index()
 
     def load_clauses(self):
-        with open(CLAUSE_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+        try:
+            with open(CLAUSE_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Error loading clauses: {e}")
+        return []
+
 
     def build_index(self):
-        texts = [c["clause"] for c in self.clauses]  # changed from 'text' to 'clause'
+        texts = [c["clause"] for c in self.clauses]
         embeddings = self.model.encode(texts, convert_to_numpy=True)
         embeddings = np.array(embeddings).astype("float32")
         dim = embeddings.shape[1]
         index = faiss.IndexFlatL2(dim)
         index.add(embeddings)
+
+    # ✅ Save index to disk
+        faiss.write_index(index, "app/data/faiss.index")
+
         return index, embeddings
+
 
     def search(self, query: str, top_k: int = 5):
         query_embedding = self.model.encode([query], convert_to_numpy=True).astype("float32")

@@ -1,5 +1,10 @@
+from pydantic import BaseModel
+from typing import List
+from typing import Dict
+
 class QueryRequest(BaseModel):
-    query: str
+    documents: str  # Single URL string
+    questions: List[str]
 
     class Config:
         schema_extra = {
@@ -9,17 +14,13 @@ class QueryRequest(BaseModel):
         }
 
 class QueryResponse(BaseModel):
-    answer: str
-    clause: str
-    explanation: str
-    tags: List[str]
+    answers: List[str]
 
     class Config:
         schema_extra = {
             "example": {
-                "answer": "Yes",
-                "clause": "The policy provides coverage for mental health conditions under section 4.2.",
-                "explanation": "Mental health is explicitly mentioned as a covered condition in the policy.",
-                "tags": ["mental-health", "coverage"]
+                "answers": [
+                    "A grace period of thirty days is provided for premium payment after the due date to renew or continue the policy without losing continuity benefits."
+                ]
             }
         }
