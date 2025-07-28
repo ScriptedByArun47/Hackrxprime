@@ -6,6 +6,10 @@ import email
 from email import policy
 from bs4 import BeautifulSoup
 from io import BytesIO
+from transformers import AutoTokenizer
+
+# Load tokenizer once
+tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
 
 # --- File extractors ---
 
@@ -54,8 +58,20 @@ def split_into_clauses(text: str):
         if buffer:
             blocks.append(buffer.strip())
 
-    # Final filtering
-    return [{"clause": block} for block in blocks if len(block.split()) >= 10]
+    # Final filtering + token-safe splitting
+    final = []
+    for block in blocks:
+        tokens = tokenizer.tokenize(block)
+        if len(tokens) <= 512:
+            final.append({"clause": block})
+        else:
+            # Split long clause into chunks
+            for i in range(0, len(tokens), 512):
+                chunk = tokens[i:i + 512]
+                chunk_text = tokenizer.convert_tokens_to_string(chunk)
+                final.append({"clause": chunk_text})
+
+    return final
 
 # --- Entry point ---
 
