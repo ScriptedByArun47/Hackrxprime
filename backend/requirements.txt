@@ -5,7 +5,7 @@ pymupdf                           # PDF extraction (PyMuPDF)
 python-multipart                  # Form/file uploads
 pymongo                           # MongoDB client
 faiss-cpu                         # Vector similarity search
-ollama                            # Local model interface
+
 requests                          # For downloading files
 beautifulsoup4                    # For parsing HTML emails
 python-docx                       # For extracting DOCX files
