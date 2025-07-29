@@ -5,9 +5,7 @@ from prompts import MISTRAL_SYSTEM_PROMPT_TEMPLATE, build_mistral_prompt, build_
 import os
 from dotenv import load_dotenv
 
-
 api_key = os.getenv("GEMINI_API")
-
 genai.configure(api_key=api_key)
 genai_model = genai.GenerativeModel('models/gemini-1.5-flash')
 
