@@ -9,5 +9,5 @@ cmds = [
 [phases.build]
 cmds = []
 
-[phases.start]
+[start]
 cmd = "uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT"
