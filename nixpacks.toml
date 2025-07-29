@@ -6,8 +6,10 @@ requirements = "backend/requirements.txt"
 nixPkgs = ["git", "python311", "python311Packages.pip", "ffmpeg", "pkg-config"]
 
 [phases.install]
-cmds = []
+cmds = [
+  "pip install --upgrade pip",
+  "pip install -r backend/requirements.txt"
+]
 
 [start]
 cmd = "python3 -m uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT"
-
