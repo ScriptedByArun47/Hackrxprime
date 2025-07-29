@@ -2,9 +2,10 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
-*.log
 .env
-venv/
-.git/
+.vscode/
 .idea/
-.DS_Store
+*.db
+.git
+.gitignore
+node_modules/
