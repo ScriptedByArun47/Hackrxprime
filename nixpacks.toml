@@ -7,13 +7,17 @@ nixPkgs = [
   "ffmpeg",
   "pkg-config",
   "python311",
-  "python311Packages.fastapi",
   "python311Packages.uvicorn",
-  "python311Packages.requests",       # if needed
-  "python311Packages.pydantic",       # required by FastAPI
-  "python311Packages.numpy",          # optional: if you use numpy
+  "python311Packages.pydantic",
+  "python311Packages.requests",
+  "python311Packages.numpy",
+  "python311Packages.pip",
+  "python311Packages.setuptools",
+  "python311Packages.wheel"
 ]
+
+[phases.install]
+cmds = []
 
 [start]
 cmd = "cd backend && python3 -m uvicorn app.main:app --host 0.0.0.0 --port $PORT"
-
