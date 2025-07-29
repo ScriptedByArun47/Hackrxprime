@@ -63,7 +63,7 @@ def get_top_clauses(question, index, texts, k=15):
         return sum(1 for word in keywords if word in clause.lower())
 
     combined = sorted(combined, key=keyword_score, reverse=True)
-    return combined[:5]  # 🔧 reduced from 10 → 5
+    return combined[:7]  # 🔧 reduced from 10 → 5
 
 def trim_clauses(clauses, max_tokens=1200):
     result = []
