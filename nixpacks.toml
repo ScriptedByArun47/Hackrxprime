@@ -1,13 +1,17 @@
 [language.python]
 version = "3.11"
-requirements = "backend/requirements.txt"  # ✅ Correct path
 
 [phases.setup]
-nixPkgs = ["git", "python311", "python311Packages.pip", "ffmpeg", "pkg-config"]
-
-[phases.install]
-cmds = [
-  "pip install -r backend/requirements.txt"  # ✅ Match the correct location
+nixPkgs = [
+  "git",
+  "ffmpeg",
+  "pkg-config",
+  "python311",
+  "python311Packages.fastapi",
+  "python311Packages.uvicorn",
+  "python311Packages.requests",       # if needed
+  "python311Packages.pydantic",       # required by FastAPI
+  "python311Packages.numpy",          # optional: if you use numpy
 ]
 
 [start]
