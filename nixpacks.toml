@@ -7,7 +7,6 @@ nixPkgs = ["git", "python311", "python311Packages.pip", "ffmpeg", "pkg-config"]
 
 [phases.install]
 cmds = [
-  "pip install --upgrade pip",
   "pip install -r backend/requirements.txt"  # ✅ Match the correct location
 ]
 
