@@ -2,6 +2,9 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.log
 .env
 venv/
 .git/
+.idea/
+.DS_Store
