@@ -1,34 +1,32 @@
-# Use a lightweight Python image
+# Use slim Python base image
 FROM python:3.11-slim
 
-# Prevents Python from writing .pyc files to disc
-ENV PYTHONDONTWRITEBYTECODE 1
-# Prevents Python from buffering stdout and stderr
-ENV PYTHONUNBUFFERED 1
+# Prevent Python from creating .pyc files and buffering output
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies (required for many ML/NLP packages)
+# Install only required system dependencies
 RUN apt-get update && apt-get install -y \
-    build-essential \
+    gcc \
     libffi-dev \
     libpq-dev \
-    gcc \
     curl \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
+# Preinstall pip requirements
 COPY backend/requirements.txt .
-RUN pip install --upgrade pip
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip \
+ && pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
+# Copy application code last (better layer caching)
 COPY backend /app
 
-# Expose the port FastAPI will run on
+# Expose port
 EXPOSE 8000
 
-# Start the FastAPI server
+# Start FastAPI
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
