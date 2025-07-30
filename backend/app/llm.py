@@ -1,15 +1,20 @@
-import json
-import os
-import google.generativeai as genai
-from prompts import MISTRAL_SYSTEM_PROMPT_TEMPLATE, build_mistral_prompt, build_batch_prompt
-import os
-from dotenv import load_dotenv
+# app/llm.py
 
+import os
+import json
+import google.generativeai as genai
+from dotenv import load_dotenv
+from prompts import MISTRAL_SYSTEM_PROMPT_TEMPLATE, build_mistral_prompt, build_batch_prompt
+
+# 🔐 Load and configure Gemini API key
+load_dotenv()
 api_key = os.getenv("GEMINI_API")
 genai.configure(api_key=api_key)
-genai_model = genai.GenerativeModel('models/gemini-1.5-flash')
 
-# Escape dangerous characters to avoid JSON issues
+# Use Gemini 1.5 Flash for low-latency answers
+genai_model = genai.GenerativeModel("models/gemini-1.5-flash")
+
+# 🧼 Sanitize raw Gemini output
 def _sanitize_llm_output(raw: str) -> str:
     raw = raw.strip()
     if raw.startswith("```json"):
@@ -18,9 +23,9 @@ def _sanitize_llm_output(raw: str) -> str:
         raw = raw[3:]
     return raw.strip("`").strip()
 
-# 🔹 Single Question LLM Call
-def query_mistral_with_clauses(query, clauses):
-    prompt = build_mistral_prompt(query, clauses)
+# 🔹 Answer one question using clause context
+def query_mistral_with_clauses(question: str, clauses: list) -> dict:
+    prompt = build_mistral_prompt(question, clauses)
 
     try:
         response = genai_model.generate_content(
@@ -29,26 +34,27 @@ def query_mistral_with_clauses(query, clauses):
                 "response_mime_type": "application/json",
                 "temperature": 0.2,
                 "top_p": 0.7,
-                "max_output_tokens": 100
+                "max_output_tokens": 100,
             }
         )
-        content = _sanitize_llm_output(response.text)
-        return json.loads(content)
+        clean = _sanitize_llm_output(response.text)
+        return json.loads(clean)
 
     except json.JSONDecodeError:
         return {
-            "answer": "The document does not contain any clear or relevant clause to address the query. Please refer to the policy document directly or contact the insurer."
-        }
-    except Exception as e:
-        print(f"❌ Error calling GenAI API from llm.py: {e}")
-        return {
-            "answer": "Error",
-            "supporting_clause": "None",
-            "explanation": f"Error while calling LLM API: {str(e)}"
+            "answer": "The document does not contain a clear or relevant clause to address this query. Please consult the insurer or full policy."
         }
 
-# 🔹 Batch Gemini Query (used in /hackrx/run)
-def query_mistral_batch(questions, clauses):
+    except Exception as e:
+        print(f"❌ Error in query_mistral_with_clauses: {e}")
+        return {
+            "answer": "LLM processing error. Please try again.",
+            "supporting_clause": "None",
+            "explanation": str(e)
+        }
+
+# 🔹 Answer multiple questions at once
+def query_mistral_batch(questions: list, clauses: list) -> dict:
     prompt = build_batch_prompt(questions, clauses)
 
     try:
@@ -58,14 +64,15 @@ def query_mistral_batch(questions, clauses):
                 "response_mime_type": "application/json",
                 "temperature": 0.2,
                 "top_p": 0.7,
-                "max_output_tokens": 150
+                "max_output_tokens": 150,
             }
         )
-        content = _sanitize_llm_output(response.text)
-        return json.loads(content)
+        clean = _sanitize_llm_output(response.text)
+        return json.loads(clean)
 
     except json.JSONDecodeError:
         return {f"Q{i+1}": "Invalid or incomplete answer." for i in range(len(questions))}
+
     except Exception as e:
-        print(f"❌ Error in batch Gemini call: {e}")
-        return {f"Q{i+1}": "Error" for i in range(len(questions))}
+        print(f"❌ Error in query_mistral_batch: {e}")
+        return {f"Q{i+1}": "LLM processing error." for i in range(len(questions))}

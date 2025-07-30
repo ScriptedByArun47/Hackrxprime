@@ -1,17 +1,25 @@
+from transformers import AutoTokenizer
+
+# Load tokenizer once globally
+tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
+
+# 🔹 Template for single question prompt
+#prompts.py
 MISTRAL_SYSTEM_PROMPT_TEMPLATE = """
-You are an expert insurance assistant. Your task is to read the relevant policy clauses and answer the user's question with a clear, complete, and accurate full-sentence response in simple language.
+You are a helpful insurance assistant. Your task is to read the given policy clauses and answer the user's question clearly and naturally, using only the information in the clauses.
 
 Instructions:
-- ONLY use the information explicitly provided in the policy clauses.
-- Do NOT assume, guess, or include outside knowledge.
-- Do NOT mention clause numbers, section names, or document formatting.
-- Your answer must be factual, specific, and based only on the content of the clauses(under 25 words).
-- Include all important details such as limits, durations, eligibility conditions, and benefits where applicable.
+- Start your answer with "Yes" or "No", based only on what's explicitly stated.
+- Use simple, natural language that anyone can understand.
+- Do NOT guess, assume, or include outside knowledge.
+- Do NOT mention clause numbers, section names, or formatting.
+- Be specific, complete, and keep the answer under 4 lines (ideally <25 words).
+- Include key details such as conditions, limits, waiting periods, or exclusions.
 
 Output format:
-{{
-  "answer": "<One complete and factual sentence derived strictly from the given clauses>"
-}}
+{
+  "answer": "<A full-sentence, clear answer starting with 'Yes' or 'No', using only clause content>"
+}
 
 User Question:
 {query}
@@ -19,60 +27,59 @@ User Question:
 Relevant Policy Clauses:
 {clauses}
 
-Respond with only the raw JSON (no markdown or formatting).
-"""
+Respond with only the raw JSON (no markdown, no extra text, no backticks).
+""".strip()
 
-from transformers import AutoTokenizer
 
-# Load tokenizer only once
-tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
 
+# 🔹 Utility: Trim clauses by token limit
+def _trim_clauses(clauses: list, max_tokens: int) -> str:
+    trimmed = []
+    total_tokens = 0
+
+    for clause_obj in clauses:
+        clause = clause_obj.get("clause", "").strip()
+        tokens = len(tokenizer.tokenize(clause))
+        if total_tokens + tokens > max_tokens:
+            break
+        trimmed.append(clause)
+        total_tokens += tokens
+
+    return "\n\n".join(trimmed)
+
+
+# 🔹 Single-question prompt builder
 def build_mistral_prompt(query: str, clauses: list, max_tokens: int = 1500) -> str:
-    trimmed_clauses = []
-    token_count = 0
-
-    for clause_obj in clauses:
-        clause = clause_obj["clause"].strip()
-        tokens = len(tokenizer.tokenize(clause))
-        if token_count + tokens > max_tokens:
-            break
-        trimmed_clauses.append(clause)
-        token_count += tokens
-
-    clause_text = "\n\n".join(trimmed_clauses)
-    return MISTRAL_SYSTEM_PROMPT_TEMPLATE.format(query=query.strip(), clauses=clause_text)
+    clause_text = _trim_clauses(clauses, max_tokens)
+    return MISTRAL_SYSTEM_PROMPT_TEMPLATE.format(
+        query=query.strip(),
+        clauses=clause_text
+    )
 
 
-# ✅ Batch prompt builder for answering multiple questions at once
+# 🔹 Multi-question batch prompt builder
 def build_batch_prompt(questions: list, clauses: list, max_tokens: int = 1800) -> str:
-    trimmed_clauses = []
-    token_count = 0
+    clause_text = _trim_clauses(clauses, max_tokens)
+    question_block = "\n".join([f"Q{i+1}: {q.strip()}" for i, q in enumerate(questions)])
 
-    for clause_obj in clauses:
-        clause = clause_obj["clause"].strip()
-        tokens = len(tokenizer.tokenize(clause))
-        if token_count + tokens > max_tokens:
-            break
-        trimmed_clauses.append(clause)
-        token_count += tokens
-
-    clause_text = "\n\n".join(trimmed_clauses)
-    numbered_questions = "\n".join([f"Q{i+1}: {q}" for i, q in enumerate(questions)])
-
-    return f"""You are an expert insurance assistant. Read the following policy clauses and answer all user questions based strictly on the clauses.
+    return f"""
+You are an expert insurance assistant. Read the policy clauses below and answer the user's questions strictly using only the clause content.
 
 Policy Clauses:
 {clause_text}
 
 User Questions:
-{numbered_questions}
+{question_block}
 
-Answer each question in JSON format like:
+Answer in this JSON format:
 {{
   "Q1": "answer to question 1",
   "Q2": "answer to question 2",
   ...
 }}
 
-Only use clause content. Do not guess or assume. Concise answers(under 25 words). Answer each question clearly and concisely. Respond only with the raw JSON (no markdown or formatting).
-"""
+Instructions:
+- Be concise and factual (max 25 words per answer).
+- Do NOT guess, assume, or include outside knowledge.
+- Respond ONLY with the raw JSON (no markdown or text).
+""".strip()

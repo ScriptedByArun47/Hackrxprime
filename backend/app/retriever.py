@@ -1,41 +1,57 @@
-# app/retriever.py
 import json
+import os
 import faiss
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
 CLAUSE_FILE = "app/data/clauses.json"
+INDEX_FILE = "app/data/faiss.index"
 
 class ClauseRetriever:
     def __init__(self):
         self.model = SentenceTransformer("all-MiniLM-L6-v2")
-        self.clauses = self.load_clauses()
-        self.index, self.embeddings = self.build_index()
+        self.clauses = self._load_clauses()
+        self.index, self.embeddings = self._load_or_build_index()
 
-    def load_clauses(self):
+    def _load_clauses(self):
         try:
             with open(CLAUSE_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
+            return [c for c in data if "clause" in c and c["clause"].strip()]
         except Exception as e:
-            print(f"Error loading clauses: {e}")
-        return []
+            print(f"❌ Error loading clauses: {e}")
+            return []
 
-
-    def build_index(self):
+    def _load_or_build_index(self):
         texts = [c["clause"] for c in self.clauses]
-        embeddings = self.model.encode(texts, convert_to_numpy=True)
-        embeddings = np.array(embeddings).astype("float32")
+        if not texts:
+            print("⚠️ No clauses found to build index.")
+            return None, None
+
+        embeddings = self.model.encode(texts, convert_to_numpy=True).astype("float32")
+
+        if os.path.exists(INDEX_FILE):
+            try:
+                index = faiss.read_index(INDEX_FILE)
+                return index, embeddings
+            except Exception as e:
+                print(f"⚠️ Failed to load FAISS index from disk: {e}")
+
+        # Build and save new index
         dim = embeddings.shape[1]
         index = faiss.IndexFlatL2(dim)
         index.add(embeddings)
-
-    # ✅ Save index to disk
-        faiss.write_index(index, "app/data/faiss.index")
+        faiss.write_index(index, INDEX_FILE)
 
         return index, embeddings
 
-
     def search(self, query: str, top_k: int = 5):
+        if not self.index or not self.clauses:
+            print("⚠️ Search failed: index or clauses not available.")
+            return []
+
         query_embedding = self.model.encode([query], convert_to_numpy=True).astype("float32")
         D, I = self.index.search(query_embedding, top_k)
-        return [self.clauses[idx] for idx in I[0]]
+
+        # Filter out invalid indices (shouldn't happen unless index mismatch)
+        return [self.clauses[i] for i in I[0] if 0 <= i < len(self.clauses)]
