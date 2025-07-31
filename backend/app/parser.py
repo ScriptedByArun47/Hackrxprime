@@ -28,7 +28,8 @@ def parse_query(query: str) -> Dict:
         "pre_existing": ["pre-existing", "ped", "pre existing"],
         "discount": ["ncd", "discount", "no claim bonus"],
         "ayush": ["ayurveda", "homeopathy", "ayush", "unani"],
-        "organ_donor": ["organ donor", "transplant", "donation"]
+        "organ_donor": ["organ donor", "transplant", "donation"],
+        "grace_period": ["grace period", "payment grace", "premium grace", "due date", "late payment"]
     }
 
     found_tags: List[str] = []
