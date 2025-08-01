@@ -1,3 +1,4 @@
+# [Unchanged top imports]
 from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import List, Union, Dict
@@ -14,7 +15,7 @@ import json
 import re
 import asyncio
 
-# Load environment variables
+# Load env vars and API key
 load_dotenv()
 api_key = os.getenv("GEMINI_API")
 genai.configure(api_key=api_key)
@@ -22,12 +23,12 @@ genai.configure(api_key=api_key)
 # FastAPI app
 app = FastAPI()
 
-# Embedding and tokenizer
+# Load embedding model and tokenizer
 model = SentenceTransformer("all-MiniLM-L6-v2")
 tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
-genai_model = genai.GenerativeModel('models/gemini-1.5-flash')
+genai_model = genai.GenerativeModel("models/gemini-1.5-flash")
 
-# Allow CORS
+# Allow all CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -36,12 +37,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Input schema
+# Request schema
 class HackRxRequest(BaseModel):
     documents: Union[str, List[str]]
     questions: List[str]
 
-# Build FAISS index from clauses
+# Build FAISS index
 def build_faiss_index(clauses: List[Dict]) -> tuple:
     texts = [c["clause"] for c in clauses]
     vectors = model.encode(texts)
@@ -49,13 +50,13 @@ def build_faiss_index(clauses: List[Dict]) -> tuple:
     index.add(np.array(vectors))
     return index, texts
 
-# Keyword extractor for additional matching
+# Extract keywords from question
 def extract_keywords(question: str) -> List[str]:
     tokens = re.findall(r'\b\w+\b', question.lower())
     stopwords = {"what", "is", "the", "of", "under", "a", "an", "how", "for", "and", "in", "on", "to", "does", "do", "are"}
     return [t for t in tokens if t not in stopwords and len(t) > 2]
 
-# Top clause retriever
+# Semantic + keyword-based clause retriever
 def get_top_clauses(question: str, index, texts: List[str], k: int = 15) -> List[str]:
     q_vector = model.encode([question])
     _, I = index.search(np.array(q_vector), k)
@@ -69,7 +70,7 @@ def get_top_clauses(question: str, index, texts: List[str], k: int = 15) -> List
 
     return sorted(combined, key=keyword_score, reverse=True)[:7]
 
-# Trim clauses based on token length
+# Token limit trimmer
 def trim_clauses(clauses: List[Dict[str, str]], max_tokens: int = 1200) -> List[Dict[str, str]]:
     result = []
     total = 0
@@ -82,11 +83,11 @@ def trim_clauses(clauses: List[Dict[str, str]], max_tokens: int = 1200) -> List[
         total += tokens
     return result
 
-# Prompt constructor
+# Prompt constructor (escaped)
 def build_prompt_batch(question_clause_map: Dict[str, List[Dict[str, str]]]) -> str:
     prompt_lines = []
     for i, (question, clauses) in enumerate(question_clause_map.items(), start=1):
-        joined = " ".join(c["clause"].replace('"', '\\"') for c in clauses)
+        joined = " ".join(c["clause"].replace('\\', '\\\\').replace('"', '\\"') for c in clauses)
         prompt_lines.append(f'"Q{i}": {{"question": "{question}", "clauses": "{joined}"}}')
 
     json_data = "{\n" + ",\n".join(prompt_lines) + "\n}"
@@ -99,7 +100,7 @@ def build_prompt_batch(question_clause_map: Dict[str, List[Dict[str, str]]]) -> 
     )
     return prompt
 
-# Gemini LLM call
+# Gemini call (batch-safe)
 async def call_llm(prompt: str, offset: int, batch_size: int) -> Dict[str, Dict[str, str]]:
     try:
         response = await asyncio.to_thread(
@@ -107,7 +108,8 @@ async def call_llm(prompt: str, offset: int, batch_size: int) -> Dict[str, Dict[
             contents=[{"role": "user", "parts": [prompt]}],
             generation_config={"response_mime_type": "application/json"},
         )
-        content = response.text.strip().lstrip("```json").rstrip("```").strip()
+        content = getattr(response, "text", None) or response.candidates[0].content.parts[0].text
+        content = content.strip().lstrip("```json").rstrip("```").strip()
         parsed = json.loads(content)
 
         if hasattr(response, "usage_metadata"):
@@ -124,12 +126,11 @@ async def call_llm(prompt: str, offset: int, batch_size: int) -> Dict[str, Dict[
             for i in range(batch_size)
         }
 
-# Main endpoint
+# API endpoint
 @app.post("/hackrx/run")
 async def hackrx_run(req: HackRxRequest):
     doc_urls = req.documents if isinstance(req.documents, list) else [req.documents]
     all_clauses = []
-
     for url in doc_urls:
         try:
             all_clauses.extend(extract_clauses_from_url(url))
@@ -144,8 +145,8 @@ async def hackrx_run(req: HackRxRequest):
         trimmed = trim_clauses([{"clause": c} for c in top])
         question_clause_map[question] = trimmed
 
-    # Batch into 5 groups
-    batch_size = (len(req.questions) + 4) // 5
+    # Batch questions (5 batches max)
+    batch_size = max(1, (len(req.questions) + 4) // 5)
     batches = [list(question_clause_map.items())[i:i + batch_size] for i in range(0, len(req.questions), batch_size)]
     prompts = [build_prompt_batch(dict(batch)) for batch in batches]
 
@@ -156,11 +157,10 @@ async def hackrx_run(req: HackRxRequest):
     for result in results:
         merged.update(result)
 
-    # Maintain original order
     final_answers = [merged.get(f"Q{i+1}", {}).get("answer", "No answer found.") for i in range(len(req.questions))]
     return {"answers": final_answers}
 
-# Local dev runner
+# Local runner
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))
