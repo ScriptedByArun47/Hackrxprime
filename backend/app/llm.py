@@ -4,7 +4,8 @@ import os
 import json
 import google.generativeai as genai
 from dotenv import load_dotenv
-from prompts import MISTRAL_SYSTEM_PROMPT_TEMPLATE, build_mistral_prompt, build_batch_prompt
+from app.prompts import MISTRAL_SYSTEM_PROMPT_TEMPLATE, build_mistral_prompt, build_batch_prompt
+
 
 # Load Gemini API Key
 load_dotenv()
