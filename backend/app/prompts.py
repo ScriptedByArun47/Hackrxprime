@@ -17,9 +17,9 @@ Instructions:
 - Include key details such as conditions, limits, waiting periods, or exclusions.
 
 Output format:
-{
+{{
   "answer": "<A full-sentence, clear answer starting with 'Yes' or 'No', using only clause content>"
-}
+}}
 
 User Question:
 {query}
