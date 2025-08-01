@@ -11,7 +11,7 @@ class ClauseRetriever:
     def __init__(self):
         self.model = SentenceTransformer("all-MiniLM-L6-v2")
         self.clauses = self._load_clauses()
-        self.index, self.embeddings = self._load_or_build_index()
+        self.index, _ = self._load_or_build_index()
 
     def _load_clauses(self):
         try:
@@ -28,16 +28,14 @@ class ClauseRetriever:
             print("⚠️ No clauses found to build index.")
             return None, None
 
-        embeddings = self.model.encode(texts, convert_to_numpy=True).astype("float32")
-
         if os.path.exists(INDEX_FILE):
             try:
                 index = faiss.read_index(INDEX_FILE)
-                return index, embeddings
+                return index, None
             except Exception as e:
                 print(f"⚠️ Failed to load FAISS index from disk: {e}")
 
-        # Build and save new index
+        embeddings = self.model.encode(texts, convert_to_numpy=True).astype("float32")
         dim = embeddings.shape[1]
         index = faiss.IndexFlatL2(dim)
         index.add(embeddings)
@@ -50,8 +48,14 @@ class ClauseRetriever:
             print("⚠️ Search failed: index or clauses not available.")
             return []
 
-        query_embedding = self.model.encode([query], convert_to_numpy=True).astype("float32")
+        query = query.strip().lower()
+        query_embedding = np.array(
+            self.model.encode([query], convert_to_numpy=True), dtype=np.float32
+        )
         D, I = self.index.search(query_embedding, top_k)
 
-        # Filter out invalid indices (shouldn't happen unless index mismatch)
         return [self.clauses[i] for i in I[0] if 0 <= i < len(self.clauses)]
+
+    def warmup(self):
+        _ = self.model.encode(["warmup query"], convert_to_numpy=True)
+
