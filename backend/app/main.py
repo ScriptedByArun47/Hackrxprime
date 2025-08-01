@@ -46,8 +46,8 @@ async def warmup_model():
     from app.llm import query_mistral_with_clauses
     print("🔥 Warming up Gemini model...")
     dummy_response = query_mistral_with_clauses(
-        question="What is the grace period for premium payment?",
-        clauses=["The grace period for premium payment is 30 days."]
+        question="What is covered under hospitalization?",
+        clauses=[{"clause": "Sample clause about hospitalization"}]
     )
     print("✅ Warmup response:", dummy_response)
 
