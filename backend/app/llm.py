@@ -6,15 +6,15 @@ import google.generativeai as genai
 from dotenv import load_dotenv
 from prompts import MISTRAL_SYSTEM_PROMPT_TEMPLATE, build_mistral_prompt, build_batch_prompt
 
-# 🔐 Load and configure Gemini API key
+# Load Gemini API Key
 load_dotenv()
 api_key = os.getenv("GEMINI_API")
 genai.configure(api_key=api_key)
 
-# Use Gemini 1.5 Flash for low-latency answers
+# Use Gemini 1.5 Flash (Fast + Cheap)
 genai_model = genai.GenerativeModel("models/gemini-1.5-flash")
 
-# 🧼 Sanitize raw Gemini output
+# Sanitize Gemini Output
 def _sanitize_llm_output(raw: str) -> str:
     raw = raw.strip()
     if raw.startswith("```json"):
@@ -23,7 +23,7 @@ def _sanitize_llm_output(raw: str) -> str:
         raw = raw[3:]
     return raw.strip("`").strip()
 
-# 🔹 Answer one question using clause context
+# Single-question prompt
 def query_mistral_with_clauses(question: str, clauses: list) -> dict:
     prompt = build_mistral_prompt(question, clauses)
 
@@ -31,10 +31,9 @@ def query_mistral_with_clauses(question: str, clauses: list) -> dict:
         response = genai_model.generate_content(
             contents=[{"role": "user", "parts": [prompt]}],
             generation_config={
-                "response_mime_type": "application/json",
                 "temperature": 0.2,
                 "top_p": 0.7,
-                "max_output_tokens": 100,
+                "max_output_tokens": 150
             }
         )
         clean = _sanitize_llm_output(response.text)
@@ -42,18 +41,20 @@ def query_mistral_with_clauses(question: str, clauses: list) -> dict:
 
     except json.JSONDecodeError:
         return {
-            "answer": "The document does not contain a clear or relevant clause to address this query. Please consult the insurer or full policy."
+            "answer": "The document does not contain a clear or relevant clause to address this query.",
+            "supporting_clause": "None",
+            "explanation": "Gemini could not return valid JSON."
         }
 
     except Exception as e:
-        print(f"❌ Error in query_mistral_with_clauses: {e}")
+        print(f"❌ LLM Error (single): {e}")
         return {
             "answer": "LLM processing error. Please try again.",
             "supporting_clause": "None",
             "explanation": str(e)
         }
 
-# 🔹 Answer multiple questions at once
+# Batched multi-question prompt
 def query_mistral_batch(questions: list, clauses: list) -> dict:
     prompt = build_batch_prompt(questions, clauses)
 
@@ -61,18 +62,23 @@ def query_mistral_batch(questions: list, clauses: list) -> dict:
         response = genai_model.generate_content(
             contents=[{"role": "user", "parts": [prompt]}],
             generation_config={
-                "response_mime_type": "application/json",
                 "temperature": 0.2,
                 "top_p": 0.7,
-                "max_output_tokens": 150,
+                "max_output_tokens": 300
             }
         )
         clean = _sanitize_llm_output(response.text)
-        return json.loads(clean)
+        parsed = json.loads(clean)
+
+        # Ensure response matches expected format
+        if isinstance(parsed, dict) and all(k.startswith("Q") for k in parsed.keys()):
+            return parsed
+        else:
+            raise ValueError("Unexpected response format")
 
     except json.JSONDecodeError:
         return {f"Q{i+1}": "Invalid or incomplete answer." for i in range(len(questions))}
 
     except Exception as e:
-        print(f"❌ Error in query_mistral_batch: {e}")
+        print(f"❌ LLM Error (batch): {e}")
         return {f"Q{i+1}": "LLM processing error." for i in range(len(questions))}
