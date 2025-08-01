@@ -37,6 +37,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.on_event("startup")
+async def warmup_model():
+    from app.llm import query_mistral_with_clauses
+    print("🔥 Warming up Gemini model...")
+    dummy_response = query_mistral_with_clauses(
+        question="What is the grace period for premium payment?",
+        clauses=["The grace period for premium payment is 30 days."]
+    )
+    print("✅ Warmup response:", dummy_response)
+
+
 # Request schema
 class HackRxRequest(BaseModel):
     documents: Union[str, List[str]]
