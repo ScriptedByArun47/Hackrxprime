@@ -37,6 +37,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
+
 @app.on_event("startup")
 async def warmup_model():
     from app.llm import query_mistral_with_clauses
