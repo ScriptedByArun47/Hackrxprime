@@ -43,13 +43,32 @@ def health_check():
 
 @app.on_event("startup")
 async def warmup_model():
-    from app.llm import query_mistral_with_clauses
     print("🔥 Warming up Gemini model...")
-    dummy_response = query_mistral_with_clauses(
-        question="What is covered under hospitalization?",
-        clauses=[{"clause": "Sample clause about hospitalization"}]
-    )
-    print("✅ Warmup response:", dummy_response)
+
+    # Sample question
+    sample_question = "What is covered under hospitalization?"
+    sample_clause = "Hospitalization covers room rent, nursing charges, and medical expenses incurred due to illness or accident."
+
+    # Embed + FAISS
+    try:
+        clause_vector = model.encode([sample_clause])
+        index = faiss.IndexFlatL2(clause_vector.shape[1])
+        index.add(np.array(clause_vector))
+
+        # Clause trim
+        tokens = len(tokenizer.tokenize(sample_clause))
+        trimmed_clause = [{"clause": sample_clause}] if tokens < 512 else []
+
+        # Prompt
+        qmap = {sample_question: trimmed_clause}
+        prompt = build_prompt_batch(qmap)
+
+        # Gemini call
+        result = await call_llm(prompt, 0, 1)
+        print("✅ Warmup complete:", result.get("Q1", {}).get("answer"))
+    except Exception as e:
+        print("❌ Warmup failed:", str(e))
+
 
 
 # Request schema
