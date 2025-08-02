@@ -23,6 +23,9 @@ genai.configure(api_key=api_key)
 # FastAPI app
 app = FastAPI()
 
+class RunPayload(BaseModel):
+    questions: List[str]
+
 # Load embedding model and tokenizer
 model = SentenceTransformer("all-MiniLM-L6-v2")
 tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
@@ -161,6 +164,9 @@ async def call_llm(prompt: str, offset: int, batch_size: int) -> Dict[str, Dict[
 
 @app.post("/hackrx/run")
 async def hackrx_run(req: HackRxRequest):
+    start = time.time()
+    print("⏱️ Started /hackrx/run")
+
     doc_urls = req.documents if isinstance(req.documents, list) else [req.documents]
     all_clauses = []
     for url in doc_urls:
@@ -169,7 +175,10 @@ async def hackrx_run(req: HackRxRequest):
         except Exception as e:
             print(f"❌ Failed to extract from URL {url}:", e)
 
+    print(f"📄 Clause extraction completed in {time.time() - start:.2f}s")
+
     index, clause_texts = build_faiss_index(all_clauses)
+    print(f"🔍 FAISS index built in {time.time() - start:.2f}s")
 
     question_clause_map = {}
     uncached_questions = []
@@ -181,33 +190,38 @@ async def hackrx_run(req: HackRxRequest):
         question_clause_map[question] = trimmed
         uncached_questions.append(question)
 
-    # Batch uncached questions
+    print(f"📌 Clause retrieval + trimming done in {time.time() - start:.2f}s")
+
     batch_size = max(1, (len(uncached_questions) + 4) // 5)
     batches = [list(question_clause_map.items())[i:i + batch_size] for i in range(0, len(uncached_questions), batch_size)]
     prompts = [build_prompt_batch(dict(batch)) for batch in batches]
 
+    print(f"✍️ Prompt generation done in {time.time() - start:.2f}s")
+
     tasks = [call_llm(prompt, i * batch_size, len(batch)) for i, (prompt, batch) in enumerate(zip(prompts, batches))]
+    print("⚡ Sending prompts to Gemini...")
     results = await asyncio.gather(*tasks)
+    print(f"✅ Gemini responses received in {time.time() - start:.2f}s")
 
     merged = {}
     for result in results:
         merged.update(result)
 
-    # Save new answers to cache
     for i, question in enumerate(uncached_questions):
         answer = merged.get(f"Q{i+1}", {}).get("answer", "No answer found.")
         qa_cache[question] = answer
 
-    # Persist updated cache
     with open(QA_CACHE_FILE, "w") as f:
         json.dump(qa_cache, f, indent=2)
 
-    # Build final answer list
     final_answers = [
         qa_cache.get(q) if q in qa_cache else merged.get(f"Q{i+1}", {}).get("answer", "No answer found.")
         for i, q in enumerate(req.questions)
     ]
+
+    print(f"🏁 Finished /hackrx/run in {time.time() - start:.2f}s")
     return {"answers": final_answers}
+
 
 if __name__ == "__main__":
     import uvicorn
