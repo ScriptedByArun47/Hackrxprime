@@ -14,8 +14,6 @@ import os
 import json
 import re
 import asyncio
-import time
-from concurrent.futures import ThreadPoolExecutor
 
 # Load env vars and API key
 load_dotenv()
@@ -25,19 +23,10 @@ genai.configure(api_key=api_key)
 # FastAPI app
 app = FastAPI()
 
-class RunPayload(BaseModel):
-    questions: List[str]
-
 # Load embedding model and tokenizer
 model = SentenceTransformer("all-MiniLM-L6-v2")
 tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
 genai_model = genai.GenerativeModel("models/gemini-1.5-flash")
-
-# Load clause index and texts globally
-CLAUSE_FILE = "app/data/clauses.json"
-INDEX_FILE = "app/data/faiss.index"
-clause_texts = []
-faiss_index = None
 
 # Allow all CORS
 app.add_middleware(
@@ -63,45 +52,59 @@ def health_check():
     return {"status": "ok"}
 
 @app.on_event("startup")
-async def preload():
-    global clause_texts, faiss_index
-    print("🔥 Preloading FAISS and Gemini...")
+async def warmup_model():
+    print("🔥 Warming up Gemini model and loading FAISS...")
 
-    # Load FAISS index and clauses from file if available
-    if os.path.exists(CLAUSE_FILE):
-        with open(CLAUSE_FILE, "r") as f:
-            try:
-                clauses = json.load(f)
-                clause_texts = [c["clause"] for c in clauses if "clause" in c]
-
-                if clause_texts:
-                    embeddings = model.encode(clause_texts, show_progress_bar=True)
-                    faiss_index = faiss.IndexFlatL2(embeddings.shape[1])
-                    faiss_index.add(np.array(embeddings))
-                    print(f"📄 Loaded {len(clause_texts)} clauses and built FAISS index")
-                else:
-                    print("⚠️ No valid clauses found in file, skipping FAISS index build")
-
-            except Exception as e:
-                print("❌ Error loading clauses or building FAISS:", str(e))
-    else:
-        print("⚠️ Clause file not found, skipping FAISS preload")
-
-    # Warm up Gemini with test call
     try:
-        from app.prompts import build_mistral_prompt as build_prompt_batch
-        from app.llm import call_llm
+        # --- Load clauses from clause cache ---
+        clause_file_path = os.path.abspath(os.path.join( "clause_cache", "6635d94cf9023c83521982b3043ec70c.json"))
+        if not os.path.exists(clause_file_path):
+            print("⚠️ Clause file not found:", clause_file_path)
+            return
 
+        with open(clause_file_path, "r", encoding="utf-8") as f:
+            raw_clauses = json.load(f)
+
+        # --- Filter valid clauses ---
+        valid_clauses = []
+        clause_texts = []
+
+        for item in raw_clauses:
+            clause = item.get("clause", "").strip()
+            if clause:
+                tokens = len(tokenizer.tokenize(clause))
+                if tokens <= 512:
+                    valid_clauses.append({"clause": clause})
+                    clause_texts.append(clause)
+
+        if not clause_texts:
+            print("⚠️ No valid clauses found in file, skipping FAISS index build")
+        else:
+            # --- Build FAISS index ---
+            clause_embeddings = model.encode(clause_texts, show_progress_bar=False)
+            index = faiss.IndexFlatL2(clause_embeddings.shape[1])
+            index.add(np.array(clause_embeddings))
+
+            app.state.index = index
+            app.state.clauses = valid_clauses
+            print(f"✅ FAISS index loaded with {len(clause_texts)} clauses")
+
+        # --- Gemini LLM warmup ---
         sample_question = "What is covered under hospitalization?"
         sample_clause = "Hospitalization covers room rent, nursing charges, and medical expenses incurred due to illness or accident."
+
         tokens = len(tokenizer.tokenize(sample_clause))
         trimmed_clause = [{"clause": sample_clause}] if tokens < 512 else []
+
         qmap = {sample_question: trimmed_clause}
         prompt = build_prompt_batch(qmap)
+
         result = await call_llm(prompt, 0, 1)
         print("✅ Gemini warmup complete:", result.get("Q1", {}).get("answer"))
+
     except Exception as e:
-        print("❌ Gemini warmup failed:", str(e))
+        print("❌ Warmup failed:", str(e))
+
 
 
 class HackRxRequest(BaseModel):
@@ -110,7 +113,7 @@ class HackRxRequest(BaseModel):
 
 def build_faiss_index(clauses: List[Dict]) -> tuple:
     texts = [c["clause"] for c in clauses]
-    vectors = model.encode(texts, show_progress_bar=False)
+    vectors = model.encode(texts)
     index = faiss.IndexFlatL2(vectors.shape[1])
     index.add(np.array(vectors))
     return index, texts
@@ -121,7 +124,7 @@ def extract_keywords(question: str) -> List[str]:
     return [t for t in tokens if t not in stopwords and len(t) > 2]
 
 def get_top_clauses(question: str, index, texts: List[str], k: int = 15) -> List[str]:
-    q_vector = model.encode([question], show_progress_bar=False)
+    q_vector = model.encode([question])
     _, I = index.search(np.array(q_vector), k)
     top_clauses = [texts[i] for i in I[0]]
     keywords = extract_keywords(question)
@@ -188,25 +191,15 @@ async def call_llm(prompt: str, offset: int, batch_size: int) -> Dict[str, Dict[
 
 @app.post("/hackrx/run")
 async def hackrx_run(req: HackRxRequest):
-    start = time.time()
-    print("⏱️ Started /hackrx/run")
-
     doc_urls = req.documents if isinstance(req.documents, list) else [req.documents]
     all_clauses = []
-
-    with ThreadPoolExecutor() as executor:
-        tasks = [asyncio.to_thread(extract_clauses_from_url, url) for url in doc_urls]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        for url, res in zip(doc_urls, results):
-            if isinstance(res, Exception):
-                print(f"❌ Failed to extract from URL {url}:", res)
-            else:
-                all_clauses.extend(res)
-
-    print(f"📄 Clause extraction completed in {time.time() - start:.2f}s")
+    for url in doc_urls:
+        try:
+            all_clauses.extend(extract_clauses_from_url(url))
+        except Exception as e:
+            print(f"❌ Failed to extract from URL {url}:", e)
 
     index, clause_texts = build_faiss_index(all_clauses)
-    print(f"🔍 FAISS index built in {time.time() - start:.2f}s")
 
     question_clause_map = {}
     uncached_questions = []
@@ -218,36 +211,32 @@ async def hackrx_run(req: HackRxRequest):
         question_clause_map[question] = trimmed
         uncached_questions.append(question)
 
-    print(f"📌 Clause retrieval + trimming done in {time.time() - start:.2f}s")
-
+    # Batch uncached questions
     batch_size = max(1, (len(uncached_questions) + 4) // 5)
     batches = [list(question_clause_map.items())[i:i + batch_size] for i in range(0, len(uncached_questions), batch_size)]
     prompts = [build_prompt_batch(dict(batch)) for batch in batches]
 
-    print(f"✍️ Prompt generation done in {time.time() - start:.2f}s")
-
     tasks = [call_llm(prompt, i * batch_size, len(batch)) for i, (prompt, batch) in enumerate(zip(prompts, batches))]
-    print("⚡ Sending prompts to Gemini...")
     results = await asyncio.gather(*tasks)
-    print(f"✅ Gemini responses received in {time.time() - start:.2f}s")
 
     merged = {}
     for result in results:
         merged.update(result)
 
+    # Save new answers to cache
     for i, question in enumerate(uncached_questions):
         answer = merged.get(f"Q{i+1}", {}).get("answer", "No answer found.")
         qa_cache[question] = answer
 
+    # Persist updated cache
     with open(QA_CACHE_FILE, "w") as f:
         json.dump(qa_cache, f, indent=2)
 
+    # Build final answer list
     final_answers = [
         qa_cache.get(q) if q in qa_cache else merged.get(f"Q{i+1}", {}).get("answer", "No answer found.")
         for i, q in enumerate(req.questions)
     ]
-
-    print(f"🏁 Finished /hackrx/run in {time.time() - start:.2f}s")
     return {"answers": final_answers}
 
 if __name__ == "__main__":
