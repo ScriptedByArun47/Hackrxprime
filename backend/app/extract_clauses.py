@@ -9,6 +9,7 @@ from email import policy
 from bs4 import BeautifulSoup
 from io import BytesIO
 from transformers import AutoTokenizer
+import re
 
 # Load tokenizer once (512-token limit for Gemini/Mistral)
 tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
@@ -37,34 +38,59 @@ def extract_text_from_eml(file_bytes: bytes) -> str:
                 return BeautifulSoup(part.get_content(), "html.parser").get_text()
     return msg.get_content()
 
-# --- 📎 Clause Splitter ---
+# --- ✂️ Clause Splitter ---
+
+def clean_text(text: str) -> str:
+    return re.sub(r'\s+', ' ', text).replace('\xa0', ' ').strip()
 
 def split_into_clauses(text: str):
     text = text.replace('\r', '').replace('\xa0', ' ').strip()
-    blocks = [b.strip() for b in text.split('\n\n') if len(b.strip()) > 40]
 
-    if len(blocks) < 5:
-        lines = [line.strip() for line in text.split('\n') if line.strip()]
-        buffer = ''
-        blocks = []
-        for line in lines:
-            buffer += ' ' + line
-            if len(buffer.split()) >= 50:
+    # Sentence-level splitting
+    sentences = re.split(r'(?<=[.!?]) +', text)
+    buffer = ''
+    blocks = []
+    for sentence in sentences:
+        candidate = buffer + ' ' + sentence if buffer else sentence
+        if len(tokenizer.tokenize(candidate)) <= 512:
+            buffer = candidate
+        else:
+            if buffer:
                 blocks.append(buffer.strip())
-                buffer = ''
-        if buffer:
-            blocks.append(buffer.strip())
+            buffer = sentence
+    if buffer:
+        blocks.append(buffer.strip())
 
-    final = []
+    # Preserve section headers (optional)
+    header_pattern = re.compile(r'^(Section\s+\d+|[0-9.]{1,5}\s+[\w ]{3,})')
+    combined_blocks = []
+    current_header = ''
+
     for block in blocks:
-        tokens = tokenizer.tokenize(block)
+        if header_pattern.match(block.strip()):
+            current_header = block.strip()
+        else:
+            full_block = f"{current_header}\n{block.strip()}" if current_header else block.strip()
+            combined_blocks.append(full_block)
+            current_header = ''
+
+    # Final chunking with tokenizer (optional re-chunk if >512 tokens)
+    final = []
+    for idx, block in enumerate(combined_blocks):
+        tokens = tokenizer.tokenize(clean_text(block))
         if len(tokens) <= 512:
-            final.append({"clause": block})
+            final.append({
+                "clause": clean_text(block),
+                "id": f"clause_{len(final)+1}"
+            })
         else:
             for i in range(0, len(tokens), 512):
                 chunk = tokens[i:i + 512]
                 text_chunk = tokenizer.convert_tokens_to_string(chunk)
-                final.append({"clause": text_chunk})
+                final.append({
+                    "clause": clean_text(text_chunk),
+                    "id": f"clause_{len(final)+1}"
+                })
 
     return final
 

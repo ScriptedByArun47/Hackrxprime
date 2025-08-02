@@ -37,27 +37,50 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# QA cache file
+QA_CACHE_FILE = "qa_cache.json"
+qa_cache = {}
+if os.path.exists(QA_CACHE_FILE):
+    with open(QA_CACHE_FILE, "r") as f:
+        try:
+            qa_cache = json.load(f)
+        except json.JSONDecodeError:
+            qa_cache = {}
+
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
 
 @app.on_event("startup")
 async def warmup_model():
-    from app.llm import query_mistral_with_clauses
     print("🔥 Warming up Gemini model...")
-    dummy_response = query_mistral_with_clauses(
-        question="What is covered under hospitalization?",
-        clauses=[{"clause": "Sample clause about hospitalization"}]
-    )
-    print("✅ Warmup response:", dummy_response)
+
+    # Sample question
+    sample_question = "What is covered under hospitalization?"
+    sample_clause = "Hospitalization covers room rent, nursing charges, and medical expenses incurred due to illness or accident."
+
+    # Embed + FAISS
+    try:
+        clause_vector = model.encode([sample_clause])
+        index = faiss.IndexFlatL2(clause_vector.shape[1])
+        index.add(np.array(clause_vector))
+
+        tokens = len(tokenizer.tokenize(sample_clause))
+        trimmed_clause = [{"clause": sample_clause}] if tokens < 512 else []
+
+        qmap = {sample_question: trimmed_clause}
+        prompt = build_prompt_batch(qmap)
+
+        result = await call_llm(prompt, 0, 1)
+        print("✅ Warmup complete:", result.get("Q1", {}).get("answer"))
+    except Exception as e:
+        print("❌ Warmup failed:", str(e))
 
 
-# Request schema
 class HackRxRequest(BaseModel):
     documents: Union[str, List[str]]
     questions: List[str]
 
-# Build FAISS index
 def build_faiss_index(clauses: List[Dict]) -> tuple:
     texts = [c["clause"] for c in clauses]
     vectors = model.encode(texts)
@@ -65,13 +88,11 @@ def build_faiss_index(clauses: List[Dict]) -> tuple:
     index.add(np.array(vectors))
     return index, texts
 
-# Extract keywords from question
 def extract_keywords(question: str) -> List[str]:
     tokens = re.findall(r'\b\w+\b', question.lower())
     stopwords = {"what", "is", "the", "of", "under", "a", "an", "how", "for", "and", "in", "on", "to", "does", "do", "are"}
     return [t for t in tokens if t not in stopwords and len(t) > 2]
 
-# Semantic + keyword-based clause retriever
 def get_top_clauses(question: str, index, texts: List[str], k: int = 15) -> List[str]:
     q_vector = model.encode([question])
     _, I = index.search(np.array(q_vector), k)
@@ -85,7 +106,6 @@ def get_top_clauses(question: str, index, texts: List[str], k: int = 15) -> List
 
     return sorted(combined, key=keyword_score, reverse=True)[:7]
 
-# Token limit trimmer
 def trim_clauses(clauses: List[Dict[str, str]], max_tokens: int = 1200) -> List[Dict[str, str]]:
     result = []
     total = 0
@@ -98,7 +118,6 @@ def trim_clauses(clauses: List[Dict[str, str]], max_tokens: int = 1200) -> List[
         total += tokens
     return result
 
-# Prompt constructor (escaped)
 def build_prompt_batch(question_clause_map: Dict[str, List[Dict[str, str]]]) -> str:
     prompt_lines = []
     for i, (question, clauses) in enumerate(question_clause_map.items(), start=1):
@@ -115,7 +134,6 @@ def build_prompt_batch(question_clause_map: Dict[str, List[Dict[str, str]]]) -> 
     )
     return prompt
 
-# Gemini call (batch-safe)
 async def call_llm(prompt: str, offset: int, batch_size: int) -> Dict[str, Dict[str, str]]:
     try:
         response = await asyncio.to_thread(
@@ -141,7 +159,6 @@ async def call_llm(prompt: str, offset: int, batch_size: int) -> Dict[str, Dict[
             for i in range(batch_size)
         }
 
-# API endpoint
 @app.post("/hackrx/run")
 async def hackrx_run(req: HackRxRequest):
     doc_urls = req.documents if isinstance(req.documents, list) else [req.documents]
@@ -155,14 +172,18 @@ async def hackrx_run(req: HackRxRequest):
     index, clause_texts = build_faiss_index(all_clauses)
 
     question_clause_map = {}
+    uncached_questions = []
     for question in req.questions:
+        if question in qa_cache:
+            continue
         top = get_top_clauses(question, index, clause_texts)
         trimmed = trim_clauses([{"clause": c} for c in top])
         question_clause_map[question] = trimmed
+        uncached_questions.append(question)
 
-    # Batch questions (5 batches max)
-    batch_size = max(1, (len(req.questions) + 4) // 5)
-    batches = [list(question_clause_map.items())[i:i + batch_size] for i in range(0, len(req.questions), batch_size)]
+    # Batch uncached questions
+    batch_size = max(1, (len(uncached_questions) + 4) // 5)
+    batches = [list(question_clause_map.items())[i:i + batch_size] for i in range(0, len(uncached_questions), batch_size)]
     prompts = [build_prompt_batch(dict(batch)) for batch in batches]
 
     tasks = [call_llm(prompt, i * batch_size, len(batch)) for i, (prompt, batch) in enumerate(zip(prompts, batches))]
@@ -172,10 +193,22 @@ async def hackrx_run(req: HackRxRequest):
     for result in results:
         merged.update(result)
 
-    final_answers = [merged.get(f"Q{i+1}", {}).get("answer", "No answer found.") for i in range(len(req.questions))]
+    # Save new answers to cache
+    for i, question in enumerate(uncached_questions):
+        answer = merged.get(f"Q{i+1}", {}).get("answer", "No answer found.")
+        qa_cache[question] = answer
+
+    # Persist updated cache
+    with open(QA_CACHE_FILE, "w") as f:
+        json.dump(qa_cache, f, indent=2)
+
+    # Build final answer list
+    final_answers = [
+        qa_cache.get(q) if q in qa_cache else merged.get(f"Q{i+1}", {}).get("answer", "No answer found.")
+        for i, q in enumerate(req.questions)
+    ]
     return {"answers": final_answers}
 
-# Local runner
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))
