@@ -191,15 +191,21 @@ async def call_llm(prompt: str, offset: int, batch_size: int) -> Dict[str, Dict[
 
 @app.post("/hackrx/run")
 async def hackrx_run(req: HackRxRequest):
-    doc_urls = req.documents if isinstance(req.documents, list) else [req.documents]
-    all_clauses = []
-    for url in doc_urls:
-        try:
-            all_clauses.extend(extract_clauses_from_url(url))
-        except Exception as e:
-            print(f"❌ Failed to extract from URL {url}:", e)
+        # ✅ Use preloaded FAISS index if available from startup
+    if hasattr(app.state, "index") and hasattr(app.state, "clauses"):
+        index = app.state.index
+        clause_texts = [c["clause"] for c in app.state.clauses]
+    else:
+        # Fallback to runtime clause extraction if FAISS not loaded
+        doc_urls = req.documents if isinstance(req.documents, list) else [req.documents]
+        all_clauses = []
+        for url in doc_urls:
+            try:
+                all_clauses.extend(extract_clauses_from_url(url))
+            except Exception as e:
+                print(f"❌ Failed to extract from URL {url}:", e)
+        index, clause_texts = build_faiss_index(all_clauses)
 
-    index, clause_texts = build_faiss_index(all_clauses)
 
     question_clause_map = {}
     uncached_questions = []
