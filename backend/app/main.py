@@ -218,7 +218,7 @@ async def hackrx_run(req: HackRxRequest):
         uncached_questions.append(question)
 
     # Batch uncached questions
-    batch_size = max(1, (len(uncached_questions) + 4) // 5)
+    batch_size = 50
     batches = [list(question_clause_map.items())[i:i + batch_size] for i in range(0, len(uncached_questions), batch_size)]
     prompts = [build_prompt_batch(dict(batch)) for batch in batches]
 
