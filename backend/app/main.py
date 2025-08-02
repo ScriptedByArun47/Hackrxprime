@@ -89,7 +89,7 @@ async def preload():
 
     # Warm up Gemini with test call
     try:
-        from app.prompts import build_prompt_batch
+        from app.prompts import build_mistral_prompt as build_prompt_batch
         from app.llm import call_llm
 
         sample_question = "What is covered under hospitalization?"
