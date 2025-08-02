@@ -222,7 +222,7 @@ async def hackrx_run(req: HackRxRequest):
         for i, q in enumerate(req.questions)
     ]
 
-    print(f"🏋️ Finished /hackrx/run in {time.time() - start:.2f}s")
+    print(f"🏁 Finished /hackrx/run in {time.time() - start:.2f}s")
     return {"answers": final_answers}
 
 if __name__ == "__main__":
