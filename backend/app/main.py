@@ -33,6 +33,12 @@ model = SentenceTransformer("all-MiniLM-L6-v2")
 tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
 genai_model = genai.GenerativeModel("models/gemini-1.5-flash")
 
+# Load clause index and texts globally
+CLAUSE_FILE = "app/data/clauses.json"
+INDEX_FILE = "app/data/faiss.index"
+clause_texts = []
+faiss_index = None
+
 # Allow all CORS
 app.add_middleware(
     CORSMiddleware,
@@ -57,27 +63,37 @@ def health_check():
     return {"status": "ok"}
 
 @app.on_event("startup")
-async def warmup_model():
-    print("🔥 Warming up Gemini model...")
+async def preload():
+    global clause_texts, faiss_index
+    print("🔥 Preloading FAISS and Gemini...")
 
+    # Load FAISS index and clauses
+    if os.path.exists(CLAUSE_FILE):
+        with open(CLAUSE_FILE, "r") as f:
+            clauses = json.load(f)
+            clause_texts = [c["clause"] for c in clauses if "clause" in c]
+
+        embeddings = model.encode(clause_texts, show_progress_bar=True)
+        faiss_index = faiss.IndexFlatL2(embeddings.shape[1])
+        faiss_index.add(np.array(embeddings))
+        print(f"📄 Loaded {len(clause_texts)} clauses and built FAISS index")
+    else:
+        print("⚠️ Clause file not found, skipping FAISS preload")
+
+    # Warmup Gemini
     sample_question = "What is covered under hospitalization?"
     sample_clause = "Hospitalization covers room rent, nursing charges, and medical expenses incurred due to illness or accident."
-
     try:
-        clause_vector = model.encode([sample_clause])
-        index = faiss.IndexFlatL2(clause_vector.shape[1])
-        index.add(np.array(clause_vector))
-
         tokens = len(tokenizer.tokenize(sample_clause))
         trimmed_clause = [{"clause": sample_clause}] if tokens < 512 else []
-
         qmap = {sample_question: trimmed_clause}
+        from app.prompts import build_prompt_batch
+        from app.llm import call_llm
         prompt = build_prompt_batch(qmap)
-
         result = await call_llm(prompt, 0, 1)
-        print("✅ Warmup complete:", result.get("Q1", {}).get("answer"))
+        print("✅ Gemini warmup complete:", result.get("Q1", {}).get("answer"))
     except Exception as e:
-        print("❌ Warmup failed:", str(e))
+        print("❌ Gemini warmup failed:", str(e))
 
 class HackRxRequest(BaseModel):
     documents: Union[str, List[str]]
