@@ -15,7 +15,7 @@ import json
 import re
 import asyncio
 import time
-
+from concurrent.futures import ThreadPoolExecutor
 
 # Load env vars and API key
 load_dotenv()
@@ -60,11 +60,9 @@ def health_check():
 async def warmup_model():
     print("🔥 Warming up Gemini model...")
 
-    # Sample question
     sample_question = "What is covered under hospitalization?"
     sample_clause = "Hospitalization covers room rent, nursing charges, and medical expenses incurred due to illness or accident."
 
-    # Embed + FAISS
     try:
         clause_vector = model.encode([sample_clause])
         index = faiss.IndexFlatL2(clause_vector.shape[1])
@@ -81,14 +79,13 @@ async def warmup_model():
     except Exception as e:
         print("❌ Warmup failed:", str(e))
 
-
 class HackRxRequest(BaseModel):
     documents: Union[str, List[str]]
     questions: List[str]
 
 def build_faiss_index(clauses: List[Dict]) -> tuple:
     texts = [c["clause"] for c in clauses]
-    vectors = model.encode(texts)
+    vectors = model.encode(texts, show_progress_bar=False)
     index = faiss.IndexFlatL2(vectors.shape[1])
     index.add(np.array(vectors))
     return index, texts
@@ -99,7 +96,7 @@ def extract_keywords(question: str) -> List[str]:
     return [t for t in tokens if t not in stopwords and len(t) > 2]
 
 def get_top_clauses(question: str, index, texts: List[str], k: int = 15) -> List[str]:
-    q_vector = model.encode([question])
+    q_vector = model.encode([question], show_progress_bar=False)
     _, I = index.search(np.array(q_vector), k)
     top_clauses = [texts[i] for i in I[0]]
     keywords = extract_keywords(question)
@@ -171,11 +168,15 @@ async def hackrx_run(req: HackRxRequest):
 
     doc_urls = req.documents if isinstance(req.documents, list) else [req.documents]
     all_clauses = []
-    for url in doc_urls:
-        try:
-            all_clauses.extend(extract_clauses_from_url(url))
-        except Exception as e:
-            print(f"❌ Failed to extract from URL {url}:", e)
+
+    with ThreadPoolExecutor() as executor:
+        tasks = [asyncio.to_thread(extract_clauses_from_url, url) for url in doc_urls]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for url, res in zip(doc_urls, results):
+            if isinstance(res, Exception):
+                print(f"❌ Failed to extract from URL {url}:", res)
+            else:
+                all_clauses.extend(res)
 
     print(f"📄 Clause extraction completed in {time.time() - start:.2f}s")
 
@@ -221,9 +222,8 @@ async def hackrx_run(req: HackRxRequest):
         for i, q in enumerate(req.questions)
     ]
 
-    print(f"🏁 Finished /hackrx/run in {time.time() - start:.2f}s")
+    print(f"🏋️ Finished /hackrx/run in {time.time() - start:.2f}s")
     return {"answers": final_answers}
-
 
 if __name__ == "__main__":
     import uvicorn
