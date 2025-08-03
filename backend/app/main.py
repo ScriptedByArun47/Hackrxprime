@@ -201,7 +201,7 @@ def save_clause_cache(url: str, clauses: List[Dict[str, str]]):
         json.dump(clauses, f, indent=2, ensure_ascii=False)
     print(f"✅ Clause cache saved to: {cache_path}")
 
-@app.post("/hackrx/run")
+@app.post("/api/v1/hackrx/run")
 async def hackrx_run(req: HackRxRequest):
         # ✅ Use preloaded FAISS index if available from startup
     if hasattr(app.state, "index") and hasattr(app.state, "clauses"):
