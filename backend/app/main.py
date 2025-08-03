@@ -64,6 +64,7 @@ async def warmup_model():
 
         with open(clause_file_path, "r", encoding="utf-8") as f:
             raw_clauses = json.load(f)
+            print(f"🗂 Loaded clauses from cache file: {clause_file_path}")
 
         # --- Filter valid clauses ---
         valid_clauses = []
@@ -188,6 +189,17 @@ async def call_llm(prompt: str, offset: int, batch_size: int) -> Dict[str, Dict[
             f"Q{offset + i + 1}": {"answer": "An error occurred while generating the answer."}
             for i in range(batch_size)
         }
+    
+
+def url_hash(url: str) -> str:
+    return hashlib.md5(url.encode()).hexdigest()
+
+def save_clause_cache(url: str, clauses: List[Dict[str, str]]):
+    os.makedirs("clause_cache", exist_ok=True)
+    cache_path = f"clause_cache/{url_hash(url)}.json"
+    with open(cache_path, "w", encoding="utf-8") as f:
+        json.dump(clauses, f, indent=2, ensure_ascii=False)
+    print(f"✅ Clause cache saved to: {cache_path}")
 
 @app.post("/hackrx/run")
 async def hackrx_run(req: HackRxRequest):
@@ -199,12 +211,25 @@ async def hackrx_run(req: HackRxRequest):
         # Fallback to runtime clause extraction if FAISS not loaded
         doc_urls = req.documents if isinstance(req.documents, list) else [req.documents]
         all_clauses = []
+        from pathlib import Path
+
         for url in doc_urls:
             try:
-                all_clauses.extend(extract_clauses_from_url(url))
+                cache_path = f"clause_cache/{url_hash(url)}.json"
+                if Path(cache_path).exists():
+                    with open(cache_path, "r", encoding="utf-8") as f:
+                        clauses = json.load(f)
+                    print(f"🔁 Loaded cached clauses for {url}")
+                else:
+                    clauses = extract_clauses_from_url(url)
+                    save_clause_cache(url, clauses)
+                    print(f"📄 Extracted and cached clauses for {url}")
+                all_clauses.extend(clauses)
             except Exception as e:
                 print(f"❌ Failed to extract from URL {url}:", e)
+
         index, clause_texts = build_faiss_index(all_clauses)
+
 
 
     question_clause_map = {}
