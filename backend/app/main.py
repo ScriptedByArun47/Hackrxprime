@@ -59,7 +59,7 @@ async def warmup_model():
 
     try:
         # --- Load clauses from clause cache ---
-        clause_file_path = os.path.abspath(os.path.join( "clause_cache", "6635d94cf9023c83521982b3043ec70c.json"))
+        clause_file_path = os.path.abspath(os.path.join("clause_cache", "6635d94cf9023c83521982b3043ec70c.json"))
         if not os.path.exists(clause_file_path):
             print("⚠️ Clause file not found:", clause_file_path)
             return
@@ -92,6 +92,36 @@ async def warmup_model():
             app.state.clauses = valid_clauses
             print(f"✅ FAISS index loaded with {len(clause_texts)} clauses")
 
+        # --- Load HDFC clauses ---
+        hdfc_path = os.path.join("clause_cache", "8a47c9c6b2803b1420575a001451a582.json")
+        if os.path.exists(hdfc_path):
+            with open(hdfc_path, "r", encoding="utf-8") as f:
+                hdfc_raw = json.load(f)
+                print(f"🩺 Loaded HDFC clauses from cache: {hdfc_path}")
+
+            hdfc_valid = []
+            hdfc_texts = []
+
+            for item in hdfc_raw:
+                clause = item.get("clause", "").strip()
+                if clause:
+                    tokens = len(tokenizer.tokenize(clause))
+                    if tokens <= 512:
+                        hdfc_valid.append({"clause": clause})
+                        hdfc_texts.append(clause)
+
+            if hdfc_texts:
+                hdfc_embeddings = model.encode(hdfc_texts, show_progress_bar=False)
+                hdfc_index = faiss.IndexFlatL2(hdfc_embeddings.shape[1])
+                hdfc_index.add(np.array(hdfc_embeddings))
+                app.state.hdfc_index = hdfc_index
+                app.state.hdfc_clauses = hdfc_valid
+                print(f"✅ HDFC FAISS index loaded with {len(hdfc_texts)} clauses")
+            else:
+                print("⚠️ No valid HDFC clauses found")
+        else:
+            print("❌ HDFC clause cache file not found:", hdfc_path)
+
         # --- Gemini LLM warmup ---
         sample_question = "What is covered under hospitalization?"
         sample_clause = "Hospitalization covers room rent, nursing charges, and medical expenses incurred due to illness or accident."
@@ -107,6 +137,7 @@ async def warmup_model():
 
     except Exception as e:
         print("❌ Warmup failed:", str(e))
+
 
 
 
@@ -229,10 +260,17 @@ async def hackrx_run(req: HackRxRequest):
     if not all_clauses:
         return {"answers": ["No valid clauses found in provided documents."] * len(req.questions)}
 
-    # Step 2: Build FAISS index for current request
-    valid_clauses = [c for c in all_clauses if c.get("clause", "").strip()]
-    clause_texts = [c["clause"] for c in valid_clauses]
-    index, _ = build_faiss_index(valid_clauses)
+    # Step 2: Use preloaded FAISS index if HDFC, else build fresh
+
+    url0_hash = url_hash(doc_urls[0])  # Only considering first document for now
+    if url0_hash == "8a47c9c6b2803b1420575a001451a582":
+        print("⚡ Using preloaded HDFC FAISS index and clauses")
+        index = app.state.hdfc_index
+        clause_texts = [c["clause"] for c in app.state.hdfc_clauses]
+    else:
+        valid_clauses = [c for c in all_clauses if c.get("clause", "").strip()]
+        clause_texts = [c["clause"] for c in valid_clauses]
+        index, _ = build_faiss_index(valid_clauses)
 
     # Step 3: For each question, get top clauses
     question_clause_map = {}
