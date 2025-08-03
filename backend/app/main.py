@@ -14,6 +14,8 @@ import os
 import json
 import re
 import asyncio
+import hashlib
+
 
 # Load env vars and API key
 load_dotenv()
@@ -203,35 +205,36 @@ def save_clause_cache(url: str, clauses: List[Dict[str, str]]):
 
 @app.post("/api/v1/hackrx/run")
 async def hackrx_run(req: HackRxRequest):
-        # ✅ Use preloaded FAISS index if available from startup
-    if hasattr(app.state, "index") and hasattr(app.state, "clauses"):
-        index = app.state.index
-        clause_texts = [c["clause"] for c in app.state.clauses]
-    else:
-        # Fallback to runtime clause extraction if FAISS not loaded
-        doc_urls = req.documents if isinstance(req.documents, list) else [req.documents]
-        all_clauses = []
-        from pathlib import Path
+    from pathlib import Path
 
-        for url in doc_urls:
-            try:
-                cache_path = f"clause_cache/{url_hash(url)}.json"
-                if Path(cache_path).exists():
-                    with open(cache_path, "r", encoding="utf-8") as f:
-                        clauses = json.load(f)
-                    print(f"🔁 Loaded cached clauses for {url}")
-                else:
-                    clauses = extract_clauses_from_url(url)
-                    save_clause_cache(url, clauses)
-                    print(f"📄 Extracted and cached clauses for {url}")
-                all_clauses.extend(clauses)
-            except Exception as e:
-                print(f"❌ Failed to extract from URL {url}:", e)
+    # Step 1: Handle one or more document URLs
+    doc_urls = req.documents if isinstance(req.documents, list) else [req.documents]
+    all_clauses = []
 
-        index, clause_texts = build_faiss_index(all_clauses)
+    for url in doc_urls:
+        try:
+            cache_path = f"clause_cache/{url_hash(url)}.json"
+            if Path(cache_path).exists():
+                with open(cache_path, "r", encoding="utf-8") as f:
+                    clauses = json.load(f)
+                print(f"🔁 Loaded cached clauses for {url}")
+            else:
+                clauses = extract_clauses_from_url(url)
+                save_clause_cache(url, clauses)
+                print(f"📄 Extracted and cached clauses for {url}")
+            all_clauses.extend(clauses)
+        except Exception as e:
+            print(f"❌ Failed to extract from URL {url}:", e)
 
+    if not all_clauses:
+        return {"answers": ["No valid clauses found in provided documents."] * len(req.questions)}
 
+    # Step 2: Build FAISS index for current request
+    valid_clauses = [c for c in all_clauses if c.get("clause", "").strip()]
+    clause_texts = [c["clause"] for c in valid_clauses]
+    index, _ = build_faiss_index(valid_clauses)
 
+    # Step 3: For each question, get top clauses
     question_clause_map = {}
     uncached_questions = []
     for question in req.questions:
@@ -242,28 +245,25 @@ async def hackrx_run(req: HackRxRequest):
         question_clause_map[question] = trimmed
         uncached_questions.append(question)
 
-    # Batch uncached questions
+    # Step 4: Batch LLM calls
     batch_size = 50
     batches = [list(question_clause_map.items())[i:i + batch_size] for i in range(0, len(uncached_questions), batch_size)]
     prompts = [build_prompt_batch(dict(batch)) for batch in batches]
-
     tasks = [call_llm(prompt, i * batch_size, len(batch)) for i, (prompt, batch) in enumerate(zip(prompts, batches))]
     results = await asyncio.gather(*tasks)
 
+    # Step 5: Merge results into cache
     merged = {}
     for result in results:
         merged.update(result)
-
-    # Save new answers to cache
     for i, question in enumerate(uncached_questions):
         answer = merged.get(f"Q{i+1}", {}).get("answer", "No answer found.")
         qa_cache[question] = answer
 
-    # Persist updated cache
     with open(QA_CACHE_FILE, "w") as f:
         json.dump(qa_cache, f, indent=2)
 
-    # Build final answer list
+    # Step 6: Final answer list
     final_answers = [
         qa_cache.get(q) if q in qa_cache else merged.get(f"Q{i+1}", {}).get("answer", "No answer found.")
         for i, q in enumerate(req.questions)
