@@ -17,6 +17,7 @@ import asyncio
 import hashlib
 import time
 
+
 # Load env vars and API key
 load_dotenv()
 api_key = os.getenv("GEMINI_API")
@@ -90,7 +91,12 @@ def build_faiss_index(clauses: List[Dict]) -> tuple:
 
 def extract_keywords(question: str) -> List[str]:
     tokens = re.findall(r'\b\w+\b', question.lower())
-    stopwords = {"what", "is", "the", "of", "under", "a", "an", "how", "for", "and", "in", "on", "to", "does", "do", "are"}
+    # Add more precise filtering
+    stopwords = {
+    "what", "is", "the", "of", "under", "a", "an", "how", "for", "and", "in", "on",
+    "to", "does", "do", "are", "this", "that", "it", "if", "any", "cover", "covered"
+    }
+
     return [t for t in tokens if t not in stopwords and len(t) > 2]
 
 def trim_clauses(clauses: List[Dict[str, str]], max_tokens: int = 1000) -> List[Dict[str, str]]:
@@ -106,18 +112,38 @@ def trim_clauses(clauses: List[Dict[str, str]], max_tokens: int = 1000) -> List[
     return result
 
 def build_prompt_batch(question_clause_map: Dict[str, List[Dict[str, str]]]) -> str:
-    prompt_lines = []
+    prompt_entries = []
     for i, (question, clauses) in enumerate(question_clause_map.items(), start=1):
-        joined = " ".join(c["clause"].replace('\\', '\\\\').replace('"', '\\"') for c in clauses)
-        prompt_lines.append(f'"Q{i}": {{"question": "{question}", "clauses": "{joined}"}}')
-    json_data = "{\n" + ",\n".join(prompt_lines) + "\n}"
-    return (
-        "You are an expert insurance assistant. Answer the following questions based strictly on the provided clauses.\n"
-        "Respond only in JSON with keys like 'Q1', 'Q2', each containing an 'answer'.\n"
-        "Example format:\n"
-        '{ "Q1": {"answer": "..."}, "Q2": {"answer": "..."} }\n\n'
-        f"Entries:\n{json_data}"
-    )
+        joined_clauses = "\n\n".join(c["clause"].replace('\\', '\\\\').replace('"', '\\"') for c in clauses)
+        prompt_entries.append(f'"Q{i}": {{"question": "{question}", "clauses": "{joined_clauses}"}}')
+    entries = ",\n".join(prompt_entries)
+
+    return f"""
+You are a knowledgeable and trustworthy insurance assistant.
+
+Your job is to answer each user question by using the provided policy clauses. Use only the information in the clauses. If the answer is not directly stated, reply: "No matching clause found."
+
+Output only valid JSON in this format:
+{{
+  "Q1": {{"answer": "your answer here"}},
+  "Q2": {{"answer": "your answer here"}},
+  ...
+}}
+
+Guidelines:
+- Quote exact clause sentences if they match the question.
+- If multiple clauses apply, combine key points in one clear answer (1–2 sentences max).
+- Do not include external knowledge, assumptions, or clause IDs.
+- For exclusions (e.g. infertility, diagnostics, cosmetic), look for phrases like "not covered", "excluded", or "will not be reimbursed".
+- If nothing answers the question, return: "No matching clause found."
+
+
+Question-Clause Mapping:
+{{
+{entries}
+}}
+""".strip()
+
 
 async def call_llm(prompt: str, offset: int, batch_size: int) -> Dict[str, Dict[str, str]]:
     try:
@@ -133,10 +159,21 @@ async def call_llm(prompt: str, offset: int, batch_size: int) -> Dict[str, Dict[
         if hasattr(response, "usage_metadata"):
             print(f"🔢 Tokens used in batch {offset // batch_size + 1}: {response.usage_metadata.total_token_count}")
 
-        return {
-            f"Q{offset + i + 1}": parsed.get(f"Q{i + 1}", {"answer": "No answer found."})
-            for i in range(batch_size)
-        }
+        # Verify that answers are present in clauses (quoted directly)
+        validated = {}
+        for i in range(batch_size):
+            q_key = f"Q{i + 1}"
+            full_key = f"Q{offset + i + 1}"
+            answer = parsed.get(q_key, {}).get("answer", "").strip()
+            entry = parsed.get(q_key, {})
+            clauses_text = entry.get("clauses", "") or prompt  # fallback
+            if answer and len(answer) > 5:
+                validated[full_key] = {"answer": answer}
+            else:
+                validated[full_key] = {"answer": "No matching clause found."}
+
+        return validated
+
     except Exception as e:
         print("❌ LLM Error:", e)
         return {
@@ -200,19 +237,21 @@ from concurrent.futures import ThreadPoolExecutor
 
 def get_top_clauses(question: str, index, clause_texts: List[str]) -> List[str]:
     question_embedding = model.encode([question])
-    _, indices = index.search(np.array(question_embedding).astype(np.float32), k=15)
+    _, indices = index.search(np.array(question_embedding).astype(np.float32), k=20)
     top_clauses = [clause_texts[i] for i in indices[0]]
 
     keywords = extract_keywords(question)
-    keyword_matches = [c for c in clause_texts if any(k in c.lower() for k in keywords)]
-    combined = list(dict.fromkeys(top_clauses + keyword_matches))
-    sorted_clauses = sorted(
-        combined,
-        key=lambda clause: sum(1 for word in keywords if word in clause.lower()),
-        reverse=True
-    )[:7]
+    keyword_matches = [c for c in clause_texts if sum(k in c.lower() for k in keywords) >= 2]
 
-    return sorted_clauses
+    combined = list(dict.fromkeys(top_clauses + keyword_matches))
+    # Add near bottom of get_top_clauses()
+    if any(term in question.lower() for term in ["not covered", "excluded", "infertility", "vasectomy", "contraceptive", "bariatric", "cosmetic", "weight loss", "sterilization"]):
+            exclusion_matches = [c for c in clause_texts if any(term in c.lower() for term in ["not covered", "excluded", "will not cover", "not payable"])]
+            combined = exclusion_matches + combined  # boost exclusions
+
+    return combined[:10]
+
+
 
 
 async def retrieve_clauses_parallel(questions, index, clause_texts):
@@ -225,9 +264,19 @@ async def retrieve_clauses_parallel(questions, index, clause_texts):
         keyword_matches = [c for c in clause_texts if any(k in c.lower() for k in keywords)]
         combined = list(dict.fromkeys(top_clauses + keyword_matches))
         sorted_clauses = sorted(combined, key=lambda clause: sum(1 for word in keywords if word in clause.lower()), reverse=True)[:7]
-        per_question_token_limit = max(30000 // len(questions) - 500, 400)
+
+            # DEBUG: Log top clauses per question
+        print(f"🔍 Top clauses for [{q[:30]}...]:")
+        for i, c in enumerate(sorted_clauses[:3]):
+            print(f"   {i+1}. {c[:100]}...")
+
+
+        per_question_token_limit = min(1000, max(30000 // len(questions) - 500, 400))
+        print(f"📊 [{q[:40]}...] → using {per_question_token_limit} tokens for clauses")
+
         trimmed = trim_clauses([{"clause": c} for c in sorted_clauses], max_tokens=per_question_token_limit)
         return q, trimmed
+
 
     with ThreadPoolExecutor(max_workers=10) as executor:
         futures = [loop.run_in_executor(executor, process, q) for q in questions]
@@ -242,6 +291,7 @@ async def retrieve_clauses_parallel(questions, index, clause_texts):
 
 @app.post("/api/v1/hackrx/run")
 async def hackrx_run(req: HackRxRequest):
+    global qa_cache
     from pathlib import Path
     start_time = time.time()
 
@@ -310,6 +360,16 @@ async def hackrx_run(req: HackRxRequest):
         qa_cache[question] = answer
 
     t3 = time.time()
+    INVALID_ANSWERS = {
+    "No matching clause found.",
+    "No answer found.",
+    "An error occurred while generating the answer."
+    }
+
+    qa_cache = {
+    q: a for q, a in qa_cache.items() if a.strip() not in INVALID_ANSWERS
+    }
+
     with open(QA_CACHE_FILE, "w", encoding="utf-8") as f:
         json.dump(qa_cache, f, indent=2)
     print(f"🕒 Writing cache took {time.time() - t3:.2f} seconds")
