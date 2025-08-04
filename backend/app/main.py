@@ -39,6 +39,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+def is_probably_insurance_policy(clauses: List[Dict[str, str]]) -> bool:
+    insurance_keywords = {
+        "coverage", "hospitalization", "sum insured", "premium", "pre-existing",
+        "benefit", "exclusion", "waiting period", "treatment", "illness", "policy"
+    }
+
+    match_count = 0
+    total_checked = 0
+
+    for clause in clauses[:40]:  # Only scan first 40 clauses
+        text = clause.get("clause", "").lower()
+        matches = sum(1 for word in insurance_keywords if word in text)
+        if matches >= 2:
+            match_count += 1
+        total_checked += 1
+
+    # Require at least 5 clauses to have at least 2 insurance keywords
+    print(f"🔍 Insurance relevance score: {match_count} / {total_checked}")
+    return match_count >= 5
+
+
 # QA cache file
 QA_CACHE_FILE = "qa_cache.json"
 qa_cache = {}
@@ -251,8 +272,19 @@ async def hackrx_run(req: HackRxRequest):
                 print(f"🔁 Loaded cached clauses for {url}")
             else:
                 clauses = extract_clauses_from_url(url)
-                save_clause_cache(url, clauses)
-                print(f"📄 Extracted and cached clauses for {url}")
+                if clauses and is_probably_insurance_policy(clauses):
+                    save_clause_cache(url, clauses)
+                    print(f"📄 Extracted and cached clauses for {url}")
+                    all_clauses.extend(clauses)
+                else:
+                    print(f"⚠️ Skipping non-insurance document: {url}")
+                    cache_path = f"clause_cache/{url_hash(url)}.json"
+                    if os.path.exists(cache_path):
+                        os.remove(cache_path)
+                        print(f"🧹 Removed stale cache file: {cache_path}")
+                    continue  # Skip to next doc if nothing found
+
+
             all_clauses.extend(clauses)
         except Exception as e:
             print(f"❌ Failed to extract from URL {url}:", e)
