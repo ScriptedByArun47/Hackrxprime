@@ -28,7 +28,7 @@ app = FastAPI()
 # Load embedding model and tokenizer
 model = SentenceTransformer("all-MiniLM-L6-v2")
 tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
-genai_model = genai.GenerativeModel("models/gemini-2.5-flash")
+genai_model = genai.GenerativeModel("models/gemini-1.5-flash")
 
 # Allow all CORS
 app.add_middleware(
@@ -89,7 +89,7 @@ def extract_keywords(question: str) -> List[str]:
     stopwords = {"what", "is", "the", "of", "under", "a", "an", "how", "for", "and", "in", "on", "to", "does", "do", "are"}
     return [t for t in tokens if t not in stopwords and len(t) > 2]
 
-def trim_clauses(clauses: List[Dict[str, str]], max_tokens: int = 1200) -> List[Dict[str, str]]:
+def trim_clauses(clauses: List[Dict[str, str]], max_tokens: int = 1000) -> List[Dict[str, str]]:
     result = []
     total = 0
     for clause_obj in clauses:
@@ -253,7 +253,10 @@ async def hackrx_run(req: HackRxRequest):
             keyword_matches = [c for c in clause_texts if any(k in c.lower() for k in keywords)]
             combined = list(dict.fromkeys(top_clauses + keyword_matches))
             sorted_clauses = sorted(combined, key=lambda clause: sum(1 for word in keywords if word in clause.lower()), reverse=True)[:7]
-            trimmed = trim_clauses([{"clause": c} for c in sorted_clauses], max_tokens=800)
+            # Dynamically adjust max tokens per question based on batch size
+            per_question_token_limit = max(30000 // len(req.questions) - 500, 400)
+            trimmed = trim_clauses([{"clause": c} for c in sorted_clauses], max_tokens=per_question_token_limit)
+
             question_clause_map[question] = trimmed
     print(f"🕒 Clause selection took {time.time() - t1:.2f} seconds")
 
@@ -288,4 +291,3 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))
     uvicorn.run("app.main:app", host="0.0.0.0", port=port, reload=True)
-
