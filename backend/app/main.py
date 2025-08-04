@@ -195,6 +195,51 @@ async def warmup_model():
     except Exception as e:
         print("❌ Gemini warmup failed:", e)
 
+from concurrent.futures import ThreadPoolExecutor
+
+
+def get_top_clauses(question: str, index, clause_texts: List[str]) -> List[str]:
+    question_embedding = model.encode([question])
+    _, indices = index.search(np.array(question_embedding).astype(np.float32), k=15)
+    top_clauses = [clause_texts[i] for i in indices[0]]
+
+    keywords = extract_keywords(question)
+    keyword_matches = [c for c in clause_texts if any(k in c.lower() for k in keywords)]
+    combined = list(dict.fromkeys(top_clauses + keyword_matches))
+    sorted_clauses = sorted(
+        combined,
+        key=lambda clause: sum(1 for word in keywords if word in clause.lower()),
+        reverse=True
+    )[:7]
+
+    return sorted_clauses
+
+
+async def retrieve_clauses_parallel(questions, index, clause_texts):
+    loop = asyncio.get_event_loop()
+    question_clause_map = {}
+
+    def process(q):
+        top_clauses = get_top_clauses(q, index, clause_texts)
+        keywords = extract_keywords(q)
+        keyword_matches = [c for c in clause_texts if any(k in c.lower() for k in keywords)]
+        combined = list(dict.fromkeys(top_clauses + keyword_matches))
+        sorted_clauses = sorted(combined, key=lambda clause: sum(1 for word in keywords if word in clause.lower()), reverse=True)[:7]
+        per_question_token_limit = max(30000 // len(questions) - 500, 400)
+        trimmed = trim_clauses([{"clause": c} for c in sorted_clauses], max_tokens=per_question_token_limit)
+        return q, trimmed
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = [loop.run_in_executor(executor, process, q) for q in questions]
+        results = await asyncio.gather(*futures)
+
+    for question, trimmed in results:
+        question_clause_map[question] = trimmed
+
+    return question_clause_map
+
+
+
 @app.post("/api/v1/hackrx/run")
 async def hackrx_run(req: HackRxRequest):
     from pathlib import Path
@@ -245,24 +290,9 @@ async def hackrx_run(req: HackRxRequest):
 
     t1 = time.time()
     uncached_questions = [q for q in req.questions if q not in qa_cache]
-    question_clause_map = {}
+    question_clause_map = await retrieve_clauses_parallel(uncached_questions, index, clause_texts)
+    print(f"🕒 Clause selection took {time.time() - t1:.2f} seconds")
 
-    if uncached_questions:
-        question_embeddings = model.encode(uncached_questions, batch_size=32, show_progress_bar=False)
-        _, indices = index.search(np.array(question_embeddings).astype(np.float32), k=15)
-
-        for i, question in enumerate(uncached_questions):
-            top_clauses = [clause_texts[j] for j in indices[i]]
-            keywords = extract_keywords(question)
-            keyword_matches = [c for c in clause_texts if any(k in c.lower() for k in keywords)]
-            combined = list(dict.fromkeys(top_clauses + keyword_matches))
-            sorted_clauses = sorted(combined, key=lambda clause: sum(1 for word in keywords if word in clause.lower()), reverse=True)[:7]
-            # Dynamically adjust max tokens per question based on batch size
-            per_question_token_limit = max(30000 // len(req.questions) - 500, 400)
-            trimmed = trim_clauses([{"clause": c} for c in sorted_clauses], max_tokens=per_question_token_limit)
-
-            question_clause_map[question] = trimmed
-    print(f"🕒 Clause sezlection took {time.time() - t1:.2f} seconds")
 
     t2 = time.time()
     batch_size = 30
