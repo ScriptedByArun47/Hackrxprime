@@ -51,6 +51,10 @@ if os.path.exists(QA_CACHE_FILE):
             print("⚠️ QA cache is corrupted. Starting fresh.")
             qa_cache = {}
 
+@app.get("/health")
+def health_check():    
+    return {"status": "ok"}
+
 class HackRxRequest(BaseModel):
     documents: Union[str, List[str]]
     questions: List[str]
@@ -258,7 +262,7 @@ async def hackrx_run(req: HackRxRequest):
             trimmed = trim_clauses([{"clause": c} for c in sorted_clauses], max_tokens=per_question_token_limit)
 
             question_clause_map[question] = trimmed
-    print(f"🕒 Clause selection took {time.time() - t1:.2f} seconds")
+    print(f"🕒 Clause sezlection took {time.time() - t1:.2f} seconds")
 
     t2 = time.time()
     batch_size = 30
