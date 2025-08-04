@@ -96,6 +96,9 @@ def split_into_clauses(text: str):
 
 # --- 🌐 Entry Point ---
 
+import hashlib
+import os
+
 def extract_clauses_from_url(url: str):
     response = requests.get(url)
     file_bytes = response.content
@@ -105,6 +108,7 @@ def extract_clauses_from_url(url: str):
     if not mime_type and content_type:
         mime_type = content_type
 
+    # Step 1: Extract text
     if mime_type:
         if "pdf" in mime_type:
             raw_text = extract_text_from_pdf(file_bytes)
@@ -119,4 +123,32 @@ def extract_clauses_from_url(url: str):
     else:
         raw_text = extract_text_from_pdf(file_bytes)
 
-    return split_into_clauses(raw_text)
+    # Step 2: Split into clauses first
+    clauses = split_into_clauses(raw_text)
+
+    # Step 3: Heuristically check if it's an insurance policy
+    policy_keywords = {
+        "policy", "insurance", "sum insured", "coverage", "benefit",
+        "premium", "claim", "hospitalization", "waiting period", "pre-existing"
+    }
+    match_count = 0
+    for clause in clauses[:40]:  # Only scan first few to avoid false positives
+        text = clause.get("clause", "").lower()
+        if sum(1 for kw in policy_keywords if kw in text) >= 2:
+            match_count += 1
+
+    if match_count < 5:
+        print(f"❌ Skipped non-policy document (matched {match_count} clauses):", url)
+        # Delete stale clause cache
+        cache_key = hashlib.md5(url.encode()).hexdigest()
+        cache_path = os.path.join("clause_cache", f"{cache_key}.json")
+        if os.path.exists(cache_path):
+            os.remove(cache_path)
+            print(f"🧹 Removed existing clause cache: {cache_path}")
+        return []
+
+    return clauses  # ✅ Only return the clauses once
+
+
+
+
