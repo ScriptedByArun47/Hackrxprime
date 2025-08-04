@@ -81,22 +81,13 @@ def build_faiss_index(clauses: List[Dict]) -> tuple:
     texts = [c["clause"] for c in clauses]
     vectors = model.encode(texts)
     index = faiss.IndexFlatL2(vectors.shape[1])
-    index.add(np.array(vectors))
+    index.add(np.array(vectors).astype(np.float32))
     return index, texts
 
 def extract_keywords(question: str) -> List[str]:
     tokens = re.findall(r'\b\w+\b', question.lower())
     stopwords = {"what", "is", "the", "of", "under", "a", "an", "how", "for", "and", "in", "on", "to", "does", "do", "are"}
     return [t for t in tokens if t not in stopwords and len(t) > 2]
-
-def get_top_clauses(question: str, index, texts: List[str], k: int = 15) -> List[str]:
-    q_vector = model.encode([question])
-    _, I = index.search(np.array(q_vector), k)
-    top_clauses = [texts[i] for i in I[0]]
-    keywords = extract_keywords(question)
-    keyword_matches = [c for c in texts if any(k in c.lower() for k in keywords)]
-    combined = list(dict.fromkeys(top_clauses + keyword_matches))
-    return sorted(combined, key=lambda clause: sum(1 for word in keywords if word in clause.lower()), reverse=True)[:7]
 
 def trim_clauses(clauses: List[Dict[str, str]], max_tokens: int = 1200) -> List[Dict[str, str]]:
     result = []
@@ -137,7 +128,6 @@ async def call_llm(prompt: str, offset: int, batch_size: int) -> Dict[str, Dict[
 
         if hasattr(response, "usage_metadata"):
             print(f"🔢 Tokens used in batch {offset // batch_size + 1}: {response.usage_metadata.total_token_count}")
-
 
         return {
             f"Q{offset + i + 1}": parsed.get(f"Q{i + 1}", {"answer": "No answer found."})
@@ -183,7 +173,7 @@ async def warmup_model():
 
             embeddings = model.encode(clause_texts, show_progress_bar=False)
             index = faiss.IndexFlatL2(embeddings.shape[1])
-            index.add(np.array(embeddings))
+            index.add(np.array(embeddings).astype(np.float32))
             urlhash = filename.replace(".json", "")
             app.state.cache_indices[urlhash] = {
                 "index": index,
@@ -244,24 +234,27 @@ async def hackrx_run(req: HackRxRequest):
         valid_clauses = [c for c in all_clauses if c.get("clause", "").strip()]
         clause_texts = [c["clause"] for c in valid_clauses]
         index, _ = build_faiss_index(valid_clauses)
-        clause_embeddings = model.encode(clause_texts)
-        dynamic_index = faiss.IndexFlatL2(clause_embeddings.shape[1])
-        dynamic_index.add(np.array(clause_embeddings))
         app.state.cache_indices[url0_hash] = {
-            "index": dynamic_index,
+            "index": index,
             "clauses": valid_clauses
         }
 
     t1 = time.time()
+    uncached_questions = [q for q in req.questions if q not in qa_cache]
     question_clause_map = {}
-    uncached_questions = []
-    for question in req.questions:
-        if question in qa_cache:
-            continue
-        top = get_top_clauses(question, index, clause_texts)
-        trimmed = trim_clauses([{"clause": c} for c in top], max_tokens=800)
-        question_clause_map[question] = trimmed
-        uncached_questions.append(question)
+
+    if uncached_questions:
+        question_embeddings = model.encode(uncached_questions, batch_size=32, show_progress_bar=False)
+        _, indices = index.search(np.array(question_embeddings).astype(np.float32), k=15)
+
+        for i, question in enumerate(uncached_questions):
+            top_clauses = [clause_texts[j] for j in indices[i]]
+            keywords = extract_keywords(question)
+            keyword_matches = [c for c in clause_texts if any(k in c.lower() for k in keywords)]
+            combined = list(dict.fromkeys(top_clauses + keyword_matches))
+            sorted_clauses = sorted(combined, key=lambda clause: sum(1 for word in keywords if word in clause.lower()), reverse=True)[:7]
+            trimmed = trim_clauses([{"clause": c} for c in sorted_clauses], max_tokens=800)
+            question_clause_map[question] = trimmed
     print(f"🕒 Clause selection took {time.time() - t1:.2f} seconds")
 
     t2 = time.time()
@@ -295,3 +288,4 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))
     uvicorn.run("app.main:app", host="0.0.0.0", port=port, reload=True)
+
