@@ -38,27 +38,52 @@ def extract_text_from_eml(file_bytes: bytes) -> str:
                 return BeautifulSoup(part.get_content(), "html.parser").get_text()
     return msg.get_content()
 
-# --- ✂️ Clause Splitter ---
+# --- ✂ Clause Splitter ---
+
+SECTION_KEYWORDS = [
+    "exclusions", "inclusions", "coverage", "benefits", "definitions",
+    "terms", "conditions", "waiting period", "claim process", "eligibility",
+    "sum insured", "room rent", "deductible", "co-payment", "maternity",
+    "newborn", "renewal", "termination", "cashless", "sub-limits",
+    "disease", "hospitalization", "ambulance", "pre-existing", "day care"
+]
+
+def is_heading(line: str) -> bool:
+    line = line.strip().lower()
+    return (
+        len(line) < 120 and (
+            line.isupper() or
+            re.match(r"^\d+[\.\)]\s", line) or
+            any(keyword in line for keyword in SECTION_KEYWORDS)
+        )
+    )
 
 def split_into_clauses(text: str):
     text = text.replace('\r', '').replace('\xa0', ' ').strip()
     raw_lines = [line.strip() for line in text.split('\n') if line.strip()]
-    
+
     clauses = []
     buffer = ""
 
     for line in raw_lines:
-        buffer += " " + line.strip()
-        # Close clause if sentence ends or paragraph is long enough
-        if (
-            len(buffer) > 400 and buffer.strip()[-1:] in {".", ";", ":"}
-        ) or len(buffer.split()) > 80:
+        if is_heading(line) and buffer:
             clauses.append({"clause": buffer.strip()})
-            buffer = ""
+            buffer = line
+        else:
+            if buffer:
+                buffer += " " + line
+            else:
+                buffer = line
+
+            if (
+                len(buffer) > 400 and buffer.strip()[-1:] in {".", ";", ":"}
+            ) or len(buffer.split()) > 80:
+                clauses.append({"clause": buffer.strip()})
+                buffer = ""
 
     if buffer.strip():
         clauses.append({"clause": buffer.strip()})
-    
+
     return clauses
 
 def filter_boilerplate_clauses(clauses):
@@ -67,8 +92,6 @@ def filter_boilerplate_clauses(clauses):
         if not any(x in c["clause"].lower() for x in ["registered office", "irda", "reg. no", "uin:", "cin:"])
         and len(c["clause"].split()) >= 10
     ]
-
-
 
 def merge_short_clauses(clauses, min_char_len=100):
     merged = []
@@ -88,8 +111,6 @@ def merge_short_clauses(clauses, min_char_len=100):
         merged.append({"clause": buffer.strip()})
 
     return merged
-
-
 
 # --- 🌐 Entry Point ---
 
@@ -118,12 +139,11 @@ def extract_clauses_from_url(url: str):
 
     clauses = split_into_clauses(raw_text)
     clauses = merge_short_clauses(clauses)
-    clauses = filter_boilerplate_clauses(clauses) 
-
+    clauses = filter_boilerplate_clauses(clauses)
 
     # 🔻 Clamp if too many
     if len(clauses) > 1000:
-        print(f"⚠️ Too any clauses ({len(clauses)}), trimming to 300")
+        print(f"⚠ Too many clauses ({len(clauses)}), trimming to 1000")
         clauses = clauses[:1000]
 
     # Heuristic policy detection
@@ -153,7 +173,7 @@ def extract_clauses_from_url(url: str):
     # Decide to keep or skip
     if match_count < 4:
         if os.path.exists(cache_path):
-            print(f"⚠️ Low match count ({match_count}) but trusting existing cache for: {url}")
+            print(f"⚠ Low match count ({match_count}) but trusting existing cache for: {url}")
             return clauses
         else:
             print(f"❌ Skipped non-policy document (matched {match_count} keywords): {url}")
