@@ -161,7 +161,7 @@ async def call_llm(prompt: str, offset: int, batch_size: int) -> Dict[str, Dict[
         }
 
 # API endpoint
-@app.post("/hackrx/run")
+@app.post("/api/v1/hackrx/run")
 async def hackrx_run(req: HackRxRequest):
     doc_urls = req.documents if isinstance(req.documents, list) else [req.documents]
     all_clauses = []
