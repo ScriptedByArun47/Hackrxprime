@@ -1,4 +1,20 @@
 # [Unchanged top imports]
+
+<<<<<<< HEAD
+# your local version
+=======
+# remote version
+>>>>>>> 18bd1d4...
+
+
+
+
+
+
+
+
+
+
 from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import List, Union, Dict
@@ -56,6 +72,40 @@ if os.path.exists(QA_CACHE_FILE):
 def health_check():    
     return {"status": "ok"}
 
+<<<<<<< HEAD
+=======
+@app.on_event("startup")
+async def warmup_model():
+    print("🔥 Warming up Gemini model...")
+
+    # Sample question
+    sample_question = "What is covered under hospitalization?"
+    sample_clause = "Hospitalization covers room rent, nursing charges, and medical expenses incurred due to illness or accident."
+
+    # Embed + FAISS
+    try:
+        clause_vector = model.encode([sample_clause])
+        index = faiss.IndexFlatL2(clause_vector.shape[1])
+        index.add(np.array(clause_vector))
+
+        # Clause trim
+        tokens = len(tokenizer.tokenize(sample_clause))
+        trimmed_clause = [{"clause": sample_clause}] if tokens < 512 else []
+
+        # Prompt
+        qmap = {sample_question: trimmed_clause}
+        prompt = build_prompt_batch(qmap)
+
+        # Gemini call
+        result = await call_llm(prompt, 0, 1)
+        print("✅ Warmup complete:", result.get("Q1", {}).get("answer"))
+    except Exception as e:
+        print("❌ Warmup failed:", str(e))
+
+
+
+# Request schema
+>>>>>>> 18bd1d447b1d1772573d17d5dad7462b6164ed7c
 class HackRxRequest(BaseModel):
     documents: Union[str, List[str]]
     questions: List[str]
@@ -185,6 +235,7 @@ async def call_llm(prompt: str, offset: int, batch_size: int) -> Dict[str, Dict[
             for i in range(batch_size)
         }
 
+<<<<<<< HEAD
 @app.on_event("startup")
 async def warmup_model():
     print("🔥 Warming up Gemini model and loading FAISS...")
@@ -305,6 +356,9 @@ async def retrieve_clauses_parallel(questions, index, clause_texts):
 
 
 
+=======
+# API endpoint
+>>>>>>> 18bd1d447b1d1772573d17d5dad7462b6164ed7c
 @app.post("/api/v1/hackrx/run")
 async def hackrx_run(req: HackRxRequest):
     global qa_cache
