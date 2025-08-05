@@ -18,7 +18,7 @@ Instructions:
 
 Output format:
 {{
-  "answer": "<A full-sentence, clear answer starting with 'Yes' or 'No', using only clause content>"
+  "answer": "Yes/No. [Coverage/exclusion statement]. [Conditions]. [Any limits or exceptions]."
 }}
 
 User Question:
