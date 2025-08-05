@@ -422,7 +422,7 @@ async def hackrx_run(req: HackRxRequest):
     print(f"✅ Total /run latency: {time.time() - start_time:.2f} seconds")
     return {"answers": final_answers}
 
-if _name_ == "_main_":
+if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))
     uvicorn.run("app.main:app", host="0.0.0.0", port=port, reload=True)
