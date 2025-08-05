@@ -310,6 +310,13 @@ async def hackrx_run(req: HackRxRequest):
     global qa_cache
     from pathlib import Path
     start_time = time.time()
+    
+    
+    # ✅ Log incoming questions
+
+    print("📥 Incoming Questions:")
+    for q in req.questions:
+        print(f"   - {q}")
 
     doc_urls = req.documents if isinstance(req.documents, list) else [req.documents]
     all_clauses = []
