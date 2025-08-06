@@ -1,9 +1,3 @@
-
-<<<<<<< HEAD
-# your local version
-=======
-# remote version
->>>>>>> 2c1e3d7...
 import requests
 import mimetypes
 import fitz  # PyMuPDF
@@ -16,7 +10,6 @@ from transformers import AutoTokenizer
 import re
 import os
 import hashlib
-
 
 # Load tokenizer once (512-token limit for Gemini/Mistral)
 tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
@@ -45,19 +38,12 @@ def extract_text_from_eml(file_bytes: bytes) -> str:
                 return BeautifulSoup(part.get_content(), "html.parser").get_text()
     return msg.get_content()
 
-<<<<<<< HEAD
 # --- ✂ Clause Spliting
 SECTION_KEYWORDS = {
-=======
-# --- ✂ Clause Splitter ---
-
-SECTION_KEYWORDS = [
->>>>>>> 2c1e3d77109b755471012cea049ac3398ba4ecff
     "exclusions", "inclusions", "coverage", "benefits", "definitions",
     "terms", "conditions", "waiting period", "claim process", "eligibility",
     "sum insured", "room rent", "deductible", "co-payment", "maternity",
     "newborn", "renewal", "termination", "cashless", "sub-limits",
-<<<<<<< HEAD
     "disease", "hospitalization", "ambulance", "pre-existing", "day care",
     "policy", "insurance", "benefit", "premium", "claim", "health cover",
     "inpatient", "exclusion", "disclosure", "third-party administrator",
@@ -65,10 +51,6 @@ SECTION_KEYWORDS = [
     "pre-hospitalization", "ayush", "daycare", "surgery", "mediclaim",
     "lifetime", "claim settlement", "grace period"
 }
-=======
-    "disease", "hospitalization", "ambulance", "pre-existing", "day care"
-]
->>>>>>> 2c1e3d77109b755471012cea049ac3398ba4ecff
 
 def is_heading(line: str) -> bool:
     line = line.strip().lower()
