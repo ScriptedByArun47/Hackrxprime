@@ -1,20 +1,4 @@
 # [Unchanged top imports]
-
-<<<<<<< HEAD
-# your local version
-=======
-# remote version
->>>>>>> 18bd1d4...
-
-
-
-
-
-
-
-
-
-
 from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import List, Union, Dict
@@ -65,47 +49,13 @@ if os.path.exists(QA_CACHE_FILE):
             qa_cache = json.load(f)
             print(f"✅ Loaded QA cache with {len(qa_cache)} entries")
         except json.JSONDecodeError:
-            print("⚠️ QA cache is corrupted. Starting fresh.")
+            print("⚠ QA cache is corrupted. Starting fresh.")
             qa_cache = {}
 
 @app.get("/health")
 def health_check():    
     return {"status": "ok"}
 
-<<<<<<< HEAD
-=======
-@app.on_event("startup")
-async def warmup_model():
-    print("🔥 Warming up Gemini model...")
-
-    # Sample question
-    sample_question = "What is covered under hospitalization?"
-    sample_clause = "Hospitalization covers room rent, nursing charges, and medical expenses incurred due to illness or accident."
-
-    # Embed + FAISS
-    try:
-        clause_vector = model.encode([sample_clause])
-        index = faiss.IndexFlatL2(clause_vector.shape[1])
-        index.add(np.array(clause_vector))
-
-        # Clause trim
-        tokens = len(tokenizer.tokenize(sample_clause))
-        trimmed_clause = [{"clause": sample_clause}] if tokens < 512 else []
-
-        # Prompt
-        qmap = {sample_question: trimmed_clause}
-        prompt = build_prompt_batch(qmap)
-
-        # Gemini call
-        result = await call_llm(prompt, 0, 1)
-        print("✅ Warmup complete:", result.get("Q1", {}).get("answer"))
-    except Exception as e:
-        print("❌ Warmup failed:", str(e))
-
-
-
-# Request schema
->>>>>>> 18bd1d447b1d1772573d17d5dad7462b6164ed7c
 class HackRxRequest(BaseModel):
     documents: Union[str, List[str]]
     questions: List[str]
@@ -133,7 +83,7 @@ def is_probably_insurance_policy(clauses: List[Dict], min_matches: int = 3) -> b
                 match_count += 1
                 break  # avoid counting multiple keywords in one clause
 
-    print(f"🕵️ Insurance keyword matches found: {match_count}")
+    print(f"🕵 Insurance keyword matches found: {match_count}")
     return match_count >= min_matches
 
 def build_faiss_index(clauses: List[Dict]) -> tuple:
@@ -165,6 +115,21 @@ def trim_clauses(clauses: List[Dict[str, str]], max_tokens: int = 2000) -> List[
         total += tokens
     return result
 
+def add_soft_hints(question: str, clauses: List[str]) -> List[str]:
+    lower_q = question.lower()
+    if "chemotherapy" in lower_q:
+        clauses.append("Note: Chemotherapy is a type of cancer treatment that may be covered if hospitalization or day care is required.")
+    elif "maternity" in lower_q or "pregnancy" in lower_q:
+        clauses.append("Note: Maternity benefits generally include expenses related to delivery or termination within policy limits.")
+    elif "dental" in lower_q:
+        clauses.append("Note: Dental treatment coverage may be excluded unless arising from an accident.")
+    elif "ambulance" in lower_q:
+        clauses.append("Note: Ambulance charges are typically capped and only reimbursed if the related hospitalization claim is accepted.")
+    elif "icu" in lower_q:
+        clauses.append("Note: ICU charges may have specific sub-limits depending on the sum insured.")
+    return clauses
+
+
 def build_prompt_batch(question_clause_map: Dict[str, List[Dict[str, str]]]) -> str:
     prompt_entries = []
     for i, (question, clauses) in enumerate(question_clause_map.items(), start=1):
@@ -173,30 +138,33 @@ def build_prompt_batch(question_clause_map: Dict[str, List[Dict[str, str]]]) -> 
     entries = ",\n".join(prompt_entries)
 
     return f"""
-You are a knowledgeable and trustworthy insurance assistant.
+You are a reliable insurance assistant.
 
-Your job is to answer each user question by using the provided policy clauses. Use only the information in the clauses. If the answer is not directly stated, reply: "No matching clause found."
+Your job is to answer each user question using only the provided insurance policy clauses. Do not use any external knowledge or assumptions. If a clause does not explicitly answer the question, respond with: "No matching clause found."
 
-Output only valid JSON in this format:
+Respond in *valid JSON format* like this:
 {{
   "Q1": {{"answer": "your answer here"}},
   "Q2": {{"answer": "your answer here"}},
   ...
 }}
 
-Guidelines:
-- Quote exact clause sentences if they match the question.
-- If multiple clauses apply, combine key points in one clear answer (1–2 sentences max).
-- Do not include external knowledge, assumptions, or clause IDs.
-- For exclusions (e.g. infertility, diagnostics, cosmetic), look for phrases like "not covered", "excluded", or "will not be reimbursed".
-- If nothing answers the question, return: "No matching clause found."
+Instructions:
+- Base each answer strictly on the matched clauses for that question.
+- Use direct quotes or rephrased summaries only if the clause clearly answers the question.
+- If multiple clauses are relevant, summarize key points into 1–2 sentences.
+- Do NOT invent information. Do NOT assume or guess.
+- For exclusions, rely on phrases like "not covered", "excluded", "will not be paid", or similar.
+- If no matching clause contains a clear answer, output: "No matching clause found."
 
+Now, using the mapping below, answer each question:
 
 Question-Clause Mapping:
 {{
 {entries}
 }}
 """.strip()
+
 
 
 async def call_llm(prompt: str, offset: int, batch_size: int) -> Dict[str, Dict[str, str]]:
@@ -207,7 +175,7 @@ async def call_llm(prompt: str, offset: int, batch_size: int) -> Dict[str, Dict[
             generation_config={"response_mime_type": "application/json"},
         )
         content = getattr(response, "text", None) or response.candidates[0].content.parts[0].text
-        content = content.strip().lstrip("```json").rstrip("```").strip()
+        content = content.strip().lstrip("json").rstrip("").strip()
         parsed = json.loads(content)
 
         if hasattr(response, "usage_metadata"):
@@ -235,7 +203,6 @@ async def call_llm(prompt: str, offset: int, batch_size: int) -> Dict[str, Dict[
             for i in range(batch_size)
         }
 
-<<<<<<< HEAD
 @app.on_event("startup")
 async def warmup_model():
     print("🔥 Warming up Gemini model and loading FAISS...")
@@ -264,7 +231,7 @@ async def warmup_model():
                         clause_texts.append(clause)
 
             if not clause_texts:
-                print(f"⚠️ No valid clauses in {filename}")
+                print(f"⚠ No valid clauses in {filename}")
                 continue
 
             embeddings = model.encode(clause_texts, show_progress_bar=False)
@@ -356,14 +323,18 @@ async def retrieve_clauses_parallel(questions, index, clause_texts):
 
 
 
-=======
-# API endpoint
->>>>>>> 18bd1d447b1d1772573d17d5dad7462b6164ed7c
 @app.post("/api/v1/hackrx/run")
 async def hackrx_run(req: HackRxRequest):
     global qa_cache
     from pathlib import Path
     start_time = time.time()
+    
+    
+    # ✅ Log incoming questions
+
+    print("📥 Incoming Questions:")
+    for q in req.questions:
+        print(f"   - {q}")
 
     doc_urls = req.documents if isinstance(req.documents, list) else [req.documents]
     all_clauses = []
@@ -382,7 +353,7 @@ async def hackrx_run(req: HackRxRequest):
                     print(f"📄 Extracted and cached clauses for {url}")
                     all_clauses.extend(clauses)
                 else:
-                    print(f"⚠️ Skipping non-insurance document: {url}")
+                    print(f"⚠ Skipping non-insurance document: {url}")
                     if os.path.exists(cache_path):
                         os.remove(cache_path)
                         print(f"🧹 Removed stale cache file: {cache_path}")
